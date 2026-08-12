@@ -1,0 +1,75 @@
+/** Starter 4×4 farm map — ES module so Android WebView can load offline. */
+export const farmMap4x4 = {
+  id: "farm_starter_4x4",
+  name: "Starter Plot",
+  width: 4,
+  height: 4,
+  tileSize: 64,
+  aesthetic: "brown-dust-2-hd2d",
+  description: "First farm map. Dense with clearable obstacles. Expand later.",
+  playerStart: { x: 0, y: 3 },
+  obstacleTypes: {
+    weed: {
+      label: "Weed",
+      requiredLevel: 1,
+      xp: 4,
+      tool: "scythe",
+      blocksMovement: false,
+      blocksPlanting: true,
+    },
+    bush: {
+      label: "Thorn Bush",
+      requiredLevel: 2,
+      xp: 8,
+      tool: "scythe",
+      blocksMovement: true,
+      blocksPlanting: true,
+    },
+    stump: {
+      label: "Tree Stump",
+      requiredLevel: 2,
+      xp: 12,
+      tool: "axe",
+      blocksMovement: true,
+      blocksPlanting: true,
+    },
+    tree: {
+      label: "Oak Tree",
+      requiredLevel: 3,
+      xp: 20,
+      tool: "axe",
+      blocksMovement: true,
+      blocksPlanting: true,
+    },
+    rock: {
+      label: "Rock",
+      requiredLevel: 2,
+      xp: 10,
+      tool: "pickaxe",
+      blocksMovement: true,
+      blocksPlanting: true,
+    },
+    boulder: {
+      label: "Large Boulder",
+      requiredLevel: 4,
+      xp: 35,
+      tool: "pickaxe",
+      blocksMovement: true,
+      blocksPlanting: true,
+    },
+  },
+  tiles: [
+    ["tree", "weed", "rock", "bush"],
+    ["weed", "boulder", "stump", "tree"],
+    ["rock", "weed", "empty", "weed"],
+    ["stump", "bush", "weed", "empty"],
+  ],
+  soil: [
+    ["untilled", "untilled", "untilled", "untilled"],
+    ["untilled", "untilled", "untilled", "untilled"],
+    ["untilled", "untilled", "tilled", "untilled"],
+    ["untilled", "untilled", "untilled", "tilled"],
+  ],
+};
+
+export default farmMap4x4;
