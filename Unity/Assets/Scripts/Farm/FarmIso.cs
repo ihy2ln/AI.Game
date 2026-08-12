@@ -38,6 +38,27 @@ namespace Game.Farm
             cam.farClipPlane = 60f;
             cam.allowMSAA = false; // keep edges chunky like HD pixel
         }
+
+        /// <summary>
+        /// Wide exploration framing for the larger forest map (roadmap item 3).
+        /// Same fixed yaw as the Home/diorama camera above — only pitch and
+        /// zoom change, so switching modes never reorients the player's
+        /// mental map. Not wired up yet; nothing calls this until the larger
+        /// map exists. See Assets/Art/README.md for the Home vs Overworld spec.
+        /// </summary>
+        public static void ApplyOverworldCamera(Camera cam, Vector3 lookAt)
+        {
+            cam.orthographic = true;
+            cam.orthographicSize = 10f;
+            cam.transform.rotation = Quaternion.Euler(60f, 45f, 0f);
+            cam.transform.position = lookAt + cam.transform.rotation * new Vector3(0f, 0.15f, -18f);
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            // Cool forest-day sky, distinct from Home's dusk purple
+            cam.backgroundColor = new Color(0.20f, 0.30f, 0.26f);
+            cam.nearClipPlane = 0.05f;
+            cam.farClipPlane = 80f;
+            cam.allowMSAA = false;
+        }
     }
 
     /// <summary>Point-filtered pixel textures for HD-pixel material look.</summary>
