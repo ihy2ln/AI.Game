@@ -13,3 +13,18 @@ android/**/build/
 android/local.properties
 *.apk
 !releases/*.apk
+
+# Unity
+Unity/Library/
+Unity/Temp/
+Unity/Obj/
+Unity/Build/
+Unity/Builds/
+Unity/Logs/
+Unity/UserSettings/
+Unity/MemoryCaptures/
+Unity/*.csproj
+Unity/*.sln
+Unity/*.userprefs
+Unity/sysinfo.txt
+logs/
