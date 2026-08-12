@@ -31,7 +31,7 @@ namespace Game.Farm
             visualsGo.transform.SetParent(transform, false);
             var visuals = visualsGo.AddComponent<FarmVisuals>();
             visuals.Build(world);
-            FarmIso.ApplyIsometricCamera(cam, visuals.MapCenter, 5.0f);
+            FarmIso.ApplyAestheticCamera(cam, visuals.MapCenter);
 
             var ctrlGo = new GameObject("FarmController");
             ctrlGo.transform.SetParent(transform, false);
@@ -42,7 +42,7 @@ namespace Game.Farm
             hudGo.transform.SetParent(transform, false);
             hudGo.AddComponent<FarmHud>().Init(ctrl);
 
-            Debug.Log("[AI.Game] Farm starter 4×4 booted (Brown Dust 2 / Stardew-Rune Factory clearing).");
+            Debug.Log("[AI.Game] Farm aesthetic sandbox 2×2 booted (2.5D anime × HD pixel).");
         }
     }
 }

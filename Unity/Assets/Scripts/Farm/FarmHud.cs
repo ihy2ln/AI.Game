@@ -40,7 +40,7 @@ namespace Game.Farm
 
             GUI.Box(new Rect(12, 12, 260, 118), GUIContent.none);
             GUI.Label(new Rect(24, 18, 240, 24), "AI.Game  ·  Farm", _title);
-            GUI.Label(new Rect(24, 46, 240, 20), $"{w.DisplayName}  ·  4×4  ·  BD2 HD-2D", _body);
+            GUI.Label(new Rect(24, 46, 240, 20), $"{w.DisplayName}  ·  2×2  ·  anime×HD-pixel", _body);
             GUI.Label(new Rect(24, 68, 240, 20), $"Farm Lv {p.Level}    XP {FormatXp(p)}", _body);
             GUI.Label(new Rect(24, 90, 240, 20), $"Cleared {w.ClearedCount} / {w.ClearedCount + w.RemainingObstacles()}", _body);
 
