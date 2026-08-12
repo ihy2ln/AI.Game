@@ -1,0 +1,14 @@
+{
+  "name": "AI.Game — Farm web prototype",
+  "install": "node --version && python3 --version",
+  "terminals": [
+    {
+      "name": "web",
+      "command": "python3 -m http.server 8000 --bind 0.0.0.0",
+      "description": "Static HTTP server for the AI.Game web prototype. Landing page: http://localhost:8000/ · Farm section: http://localhost:8000/sections/farm/"
+    }
+  ],
+  "ports": [
+    { "name": "web", "port": 8000 }
+  ]
+}
