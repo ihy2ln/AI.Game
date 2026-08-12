@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI.Game</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --void: #0c1116;
+      --panel: #151d26;
+      --line: #2a3946;
+      --steel: #5a6e80;
+      --pale: #e8dcc8;
+      --amber: #c89257;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 32px 20px;
+      background:
+        radial-gradient(ellipse at 60% 20%, rgba(200, 146, 87, 0.16), transparent 40%),
+        linear-gradient(180deg, #0c1116, #151d26);
+      color: var(--pale);
+      font-family: "Source Sans 3", "Segoe UI", sans-serif;
+    }
+    .card {
+      width: min(480px, 100%);
+      border: 1px solid var(--line);
+      background: rgba(21, 29, 38, 0.92);
+      padding: 36px 28px 28px;
+    }
+    h1 {
+      font-family: Cinzel, Palatino, serif;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--amber);
+      font-size: 1.4rem;
+      margin-bottom: 8px;
+    }
+    p { color: var(--steel); line-height: 1.5; margin-bottom: 22px; }
+    a {
+      display: block;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      color: var(--pale);
+      text-decoration: none;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    a:hover { border-color: var(--amber); color: var(--amber); }
+    a small { display: block; color: var(--steel); margin-top: 4px; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>AI.Game</h1>
+    <p>Anime lane-tactics RPG with farming, town building, and gacha. Sections unlock as they land.</p>
+    <a href="./sections/farm/">
+      Farm — Starter Plot
+      <small>4×4 HD-2D map · Stardew / Rune Factory clearing · Brown Dust 2 aesthetic</small>
+    </a>
+  </div>
+</body>
+</html>

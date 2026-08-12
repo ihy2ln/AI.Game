@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI.Game — Farm · Starter Plot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./css/farm.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">AI.Game <span>Farm</span></div>
+      <div class="meta">
+        <span id="mapName">Starter Plot</span>
+        ·
+        <span id="mapSize">4×4</span>
+        · Brown Dust 2 HD-2D
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <section class="panel">
+        <h2>Farmer</h2>
+        <div class="stat-row">
+          <span class="label">Farm Level</span>
+          <span class="value" id="level">1</span>
+        </div>
+        <div class="stat-row">
+          <span class="label">XP</span>
+          <span class="value" id="xp">0 / 15</span>
+        </div>
+        <div class="xp-track"><div class="xp-fill" id="xpBar"></div></div>
+      </section>
+
+      <section class="panel">
+        <h2>Plot Progress</h2>
+        <div class="stat-row">
+          <span class="label">Cleared</span>
+          <span class="value" id="cleared">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="label">Remaining</span>
+          <span class="value" id="remaining">0</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Selected Tile</h2>
+        <div id="tileInfo"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Clearance Gates</h2>
+        <div class="legend">
+          <div><span>Weed</span><b>Lv.1</b></div>
+          <div><span>Bush / Rock / Stump</span><b>Lv.2</b></div>
+          <div><span>Oak Tree</span><b>Lv.3</b></div>
+          <div><span>Large Boulder</span><b>Lv.4</b></div>
+        </div>
+      </section>
+
+      <p class="help">
+        <kbd>WASD</kbd> / arrows move · <kbd>Space</kbd> / <kbd>E</kbd> clear ·
+        click adjacent tile to step. Clear weeds to level up, then tackle trees and boulders.
+      </p>
+    </aside>
+
+    <main class="stage">
+      <canvas id="farm" aria-label="Farm map"></canvas>
+      <div class="log-dock" id="log" aria-live="polite"></div>
+    </main>
+  </div>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
