@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Char_enemy_support
   m_EditorClassIdentifier: Game.Data::Game.Data.CharacterDefinition
   characterId: enemy_support
-  displayName: Enemy Support
+  displayName: Stinger
   classType: 4
   element: 0
   age: 3
@@ -37,5 +37,6 @@ MonoBehaviour:
   clips: {fileID: 11400000, guid: 5d784bd90d051ff40b1ed2c8f54fe1fc, type: 2}
   portrait: {fileID: 21300000, guid: d776afa6d5900274ab4821b6c59b396f, type: 3}
   pixelSprite32: {fileID: 21300000, guid: b0d80ab15127c3548afabb882032035f, type: 3}
+  battleSprite: {fileID: 21300000, guid: 9e8bc328e1b63b64baaf808d5e662789, type: 3}
   pixelSprite96: {fileID: 0}
   personaPrompt: 

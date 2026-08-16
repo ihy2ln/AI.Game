@@ -9,9 +9,11 @@ namespace Game.Battle
     {
         readonly Dictionary<BattleUnit, GameObject> _unitViews = new();
         readonly Dictionary<BattleUnit, SpriteRenderer> _unitRenderers = new();
+        Game.Data.MapDefinition _map;
 
         public void Build(BattleWorld world)
         {
+            _map = world.Map;
             BuildBackground(world);
             foreach (var unit in world.AllUnits) BuildUnitView(unit);
         }
@@ -49,15 +51,43 @@ namespace Game.Battle
             var go = new GameObject($"Unit_{unit.Definition.characterId}");
             go.transform.SetParent(transform, false);
             go.transform.position = BattleLayout.UnitPosition(unit.Column);
-            go.transform.localScale = Vector3.one * BattleLayout.UnitScale;
 
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = unit.Definition.pixelSprite32 != null ? unit.Definition.pixelSprite32 : PlaceholderArt.UnitFallback();
+            var def = unit.Definition;
+            sr.sprite = def.battleSprite != null ? def.battleSprite
+                : def.pixelSprite32 != null ? def.pixelSprite32
+                : PlaceholderArt.UnitFallback();
             sr.flipX = !unit.FacingRight;
             sr.sortingOrder = 10;
 
+            // Normalize by world-space height regardless of source resolution/aspect --
+            // a fixed scale multiplier overlapped neighbouring columns the moment art
+            // with a different native size was swapped in (confirmed via a real build).
+            float height = Mathf.Max(sr.sprite.bounds.size.y, 0.01f);
+            float scale = BattleLayout.TargetUnitHeight / height;
+            go.transform.localScale = Vector3.one * scale;
+
             _unitViews[unit] = go;
             _unitRenderers[unit] = sr;
+        }
+
+        /// <summary>Screen-space hit test for manual targeting -- no colliders needed,
+        /// just checks each unit's SpriteRenderer world bounds against the click point
+        /// projected onto the units' z-plane.</summary>
+        public bool TryGetUnitAtScreenPoint(Vector3 screenPos, Camera cam, out BattleUnit unit)
+        {
+            float distanceToUnitPlane = -cam.transform.position.z; // units sit at z=0
+            var world = cam.ScreenToWorldPoint(new Vector3(screenPos.x, screenPos.y, distanceToUnitPlane));
+            foreach (var kv in _unitRenderers)
+            {
+                if (kv.Value.bounds.Contains(new Vector3(world.x, world.y, 0f)))
+                {
+                    unit = kv.Key;
+                    return true;
+                }
+            }
+            unit = null;
+            return false;
         }
 
         public Vector3 GetUnitWorldPosition(BattleUnit unit) =>
@@ -80,6 +110,37 @@ namespace Game.Battle
         {
             if (!unit.IsAlive && _unitRenderers.TryGetValue(unit, out var sr))
                 sr.color = new Color(0.35f, 0.35f, 0.35f, 0.6f);
+        }
+
+        const float FxWorldHeight = 1.8f;
+        const float FxFrameSeconds = 0.045f;
+
+        public void PlayImpactFx(BattleUnit target)
+        {
+            if (_map == null || _map.fxImpactSheet == null || _map.fxImpactFrameRects.Count == 0) return;
+            if (!_unitViews.TryGetValue(target, out var targetGo)) return;
+            StartCoroutine(ImpactFxRoutine(targetGo.transform.position + Vector3.up * 0.6f));
+        }
+
+        System.Collections.IEnumerator ImpactFxRoutine(Vector3 worldPos)
+        {
+            var tex = _map.fxImpactSheet.texture;
+            var go = new GameObject("ImpactFx");
+            go.transform.SetParent(transform, false);
+            go.transform.position = worldPos;
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sortingOrder = 20;
+
+            foreach (var rect in _map.fxImpactFrameRects)
+            {
+                var pixelRect = new Rect(rect.x, tex.height - rect.y - rect.w, rect.z, rect.w);
+                var frameSprite = Sprite.Create(tex, pixelRect, new Vector2(0.5f, 0.5f), 100f);
+                sr.sprite = frameSprite;
+                float s = FxWorldHeight / Mathf.Max(frameSprite.bounds.size.y, 0.01f);
+                go.transform.localScale = Vector3.one * s;
+                yield return new WaitForSeconds(FxFrameSeconds);
+            }
+            Destroy(go);
         }
     }
 }

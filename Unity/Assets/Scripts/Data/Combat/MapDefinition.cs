@@ -22,6 +22,11 @@ namespace Game.Data
         [Header("Presentation")]
         public Sprite backgroundSprite;
 
+        [Tooltip("Packed hit-impact flipbook sheet + per-frame pixel rects (x,y,w,h), "
+            + "parsed from the sheet's JSON sidecar by BattleAssetBuilder.")]
+        public Sprite fxImpactSheet;
+        public List<Vector4> fxImpactFrameRects = new();
+
         [Tooltip("Row-major: index = lane * columnCount + column.")]
         public List<TileData> tiles = new();
 

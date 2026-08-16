@@ -100,7 +100,8 @@ namespace Game.EditorTools
                 characterDefs[unitId] = charDef;
             }
 
-            BuildMap(characterDefs, tier, LoadSprite(backgroundAsset, unityRelRoot));
+            var (fxSheet, fxRects) = LoadFxSheet();
+            BuildMap(characterDefs, tier, LoadSprite(backgroundAsset, unityRelRoot), fxSheet, fxRects);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -128,6 +129,27 @@ namespace Game.EditorTools
             string path = $"{unityRelRoot}/{asset.output}";
             var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
             if (sprite == null) Debug.LogWarning($"[AI.Game] Expected sprite not found (not generated yet?): {path}");
+            return sprite;
+        }
+
+        // Curated HD roster art (Tools/AssetImport/import_roster.py), separate from the
+        // ComfyUI manifest pipeline -- see that script's docstring for provenance.
+        static readonly Dictionary<string, string> RosterNames = new()
+        {
+            ["player_melee"] = "Kestrel",
+            ["player_ranged"] = "Sable",
+            ["player_support"] = "Linnet",
+            ["enemy_melee"] = "Husk",
+            ["enemy_ranged"] = "Warden",
+            ["enemy_support"] = "Stinger",
+        };
+
+        static Sprite LoadBattleSprite(string unitId)
+        {
+            string path = $"Assets/Art/Generated/battle_sprites/char_{unitId}_battle.png";
+            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            if (sprite == null) Debug.LogWarning($"[AI.Game] Expected battle sprite not found (run "
+                + $"Tools/AssetImport/import_roster.py?): {path}");
             return sprite;
         }
 
@@ -207,7 +229,7 @@ namespace Game.EditorTools
         {
             var def = LoadOrCreate<CharacterDefinition>($"{OutDir}/Characters/Char_{unitId}.asset");
             def.characterId = unitId;
-            def.displayName = Titleize(unitId);
+            def.displayName = RosterNames.TryGetValue(unitId, out var name) ? name : Titleize(unitId);
             def.classType = arch.ClassType;
             def.element = ElementType.Neutral;
             def.age = Age.Modern;
@@ -222,11 +244,29 @@ namespace Game.EditorTools
             def.clips = clipSet;
             def.portrait = LoadSprite(portraitAsset, unityRelRoot);
             def.pixelSprite32 = LoadSprite(spriteAsset, unityRelRoot);
+            def.battleSprite = LoadBattleSprite(unitId);
             EditorUtility.SetDirty(def);
             return def;
         }
 
-        static void BuildMap(Dictionary<string, CharacterDefinition> characterDefs, TierDefinition tier, Sprite backgroundSprite)
+        static (Sprite, List<Vector4>) LoadFxSheet()
+        {
+            const string pngPath = "Assets/Art/Generated/fx/fx_hit_impact_sheet.png";
+            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(pngPath);
+            var rects = new List<Vector4>();
+            string jsonFullPath = Path.Combine(Application.dataPath, "Art/Generated/fx/fx_hit_impact_sheet.json");
+            if (sprite == null || !File.Exists(jsonFullPath))
+            {
+                Debug.LogWarning("[AI.Game] fx_hit_impact_sheet not found -- hit VFX will be skipped.");
+                return (sprite, rects);
+            }
+            var meta = JsonUtility.FromJson<FxSheetMeta>(File.ReadAllText(jsonFullPath));
+            foreach (var f in meta.frames) rects.Add(new Vector4(f.x, f.y, f.w, f.h));
+            return (sprite, rects);
+        }
+
+        static void BuildMap(Dictionary<string, CharacterDefinition> characterDefs, TierDefinition tier,
+            Sprite backgroundSprite, Sprite fxSheet, List<Vector4> fxRects)
         {
             // Side-view formation: a single lane, column = horizontal rank (see archetypes
             // comment above). Player ranks 0(back)-2(front); enemy ranks 3(front)-5(back) --
@@ -236,6 +276,8 @@ namespace Game.EditorTools
             map.laneCount = lanes;
             map.columnCount = cols;
             map.backgroundSprite = backgroundSprite;
+            map.fxImpactSheet = fxSheet;
+            map.fxImpactFrameRects = fxRects;
 
             map.tiles = new List<TileData>(lanes * cols);
             for (int i = 0; i < lanes * cols; i++)
@@ -329,6 +371,26 @@ namespace Game.EditorTools
         {
             public List<ManifestAsset> assets;
             public string outputRoot;
+        }
+
+        // fx_hit_impact_sheet.json mirror (written by both generate.py's postprocess.py
+        // and Tools/AssetImport/import_roster.py -- same shape either way)
+        [Serializable]
+        class FxFrameRect
+        {
+            public int index;
+            public int x;
+            public int y;
+            public int w;
+            public int h;
+        }
+
+        [Serializable]
+        class FxSheetMeta
+        {
+            public int frameWidth;
+            public int frameHeight;
+            public List<FxFrameRect> frames;
         }
     }
 }

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Char_player_melee
   m_EditorClassIdentifier: Game.Data::Game.Data.CharacterDefinition
   characterId: player_melee
-  displayName: Player Melee
+  displayName: Kestrel
   classType: 0
   element: 0
   age: 3
@@ -37,5 +37,6 @@ MonoBehaviour:
   clips: {fileID: 11400000, guid: 1cb24e5c6cf622f4897e5570c700bc80, type: 2}
   portrait: {fileID: 21300000, guid: d87db7c608dcc5b4dbf44bdf3580c175, type: 3}
   pixelSprite32: {fileID: 21300000, guid: f8fd8511a55f25044b3df988d065d508, type: 3}
+  battleSprite: {fileID: 21300000, guid: 582c0e4bc98aede468e7bea03882052f, type: 3}
   pixelSprite96: {fileID: 0}
   personaPrompt: 

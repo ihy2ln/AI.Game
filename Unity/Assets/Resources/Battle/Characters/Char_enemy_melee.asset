@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Char_enemy_melee
   m_EditorClassIdentifier: Game.Data::Game.Data.CharacterDefinition
   characterId: enemy_melee
-  displayName: Enemy Melee
+  displayName: Husk
   classType: 0
   element: 0
   age: 3
@@ -37,5 +37,6 @@ MonoBehaviour:
   clips: {fileID: 11400000, guid: 1cb24e5c6cf622f4897e5570c700bc80, type: 2}
   portrait: {fileID: 21300000, guid: 160919b64fc79fe4da884d8ba927c711, type: 3}
   pixelSprite32: {fileID: 21300000, guid: 50826b40ed3e3ec419bc9b9edf768d48, type: 3}
+  battleSprite: {fileID: 21300000, guid: d715549e5f0377341976f7e5175556fc, type: 3}
   pixelSprite96: {fileID: 0}
   personaPrompt: 

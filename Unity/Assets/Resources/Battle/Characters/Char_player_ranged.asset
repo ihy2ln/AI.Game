@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Char_player_ranged
   m_EditorClassIdentifier: Game.Data::Game.Data.CharacterDefinition
   characterId: player_ranged
-  displayName: Player Ranged
+  displayName: Sable
   classType: 2
   element: 0
   age: 3
@@ -37,5 +37,6 @@ MonoBehaviour:
   clips: {fileID: 11400000, guid: 22c1b081b347e0d4e853fa7d5f187424, type: 2}
   portrait: {fileID: 21300000, guid: 47f7e79780036134b8ebd8bb06529033, type: 3}
   pixelSprite32: {fileID: 21300000, guid: 9a3b8cd7aec128447b441ed1a27ec0be, type: 3}
+  battleSprite: {fileID: 21300000, guid: 475bae5da02b67c4da7ec3bc3a3e46a4, type: 3}
   pixelSprite96: {fileID: 0}
   personaPrompt: 

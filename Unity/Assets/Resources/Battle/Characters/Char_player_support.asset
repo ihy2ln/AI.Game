@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Char_player_support
   m_EditorClassIdentifier: Game.Data::Game.Data.CharacterDefinition
   characterId: player_support
-  displayName: Player Support
+  displayName: Linnet
   classType: 4
   element: 0
   age: 3
@@ -37,5 +37,6 @@ MonoBehaviour:
   clips: {fileID: 11400000, guid: 5d784bd90d051ff40b1ed2c8f54fe1fc, type: 2}
   portrait: {fileID: 21300000, guid: b73efdb7da0e2c04182ed2146c7b52ca, type: 3}
   pixelSprite32: {fileID: 21300000, guid: d410b478f749efe47a1e66a7b8d7b2ca, type: 3}
+  battleSprite: {fileID: 21300000, guid: 3682caa5c5cb13143a4760519ffd20d2, type: 3}
   pixelSprite96: {fileID: 0}
   personaPrompt: 

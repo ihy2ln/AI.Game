@@ -51,6 +51,11 @@ namespace Game.Data
         public Sprite portrait;
         public Sprite pixelSprite32;
 
+        [Tooltip("HD side-view battle art (arbitrary resolution/aspect, Bilinear-filtered) -- "
+            + "distinct from pixelSprite32, which stays reserved for a future pixel/strategic "
+            + "view per FOUNDATION.md's multi-view design. Falls back to pixelSprite32 if null.")]
+        public Sprite battleSprite;
+
         [Tooltip("Leave empty to use a 3x nearest-neighbour upscale of pixelSprite32.")]
         public Sprite pixelSprite96;
 

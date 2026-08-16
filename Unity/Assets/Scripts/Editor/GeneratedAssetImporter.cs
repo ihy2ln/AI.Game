@@ -31,11 +31,22 @@ namespace Game.EditorTools
             importer.spriteImportMode = SpriteImportMode.Single;
             importer.mipmapEnabled = false;
 
-            if (assetPath.Contains("/sprites/") || assetPath.Contains("/fx/"))
+            if (assetPath.Contains("/sprites/"))
             {
+                // Low-res auto-generated pixel art (32x32 archetype placeholders).
                 importer.filterMode = FilterMode.Point;
                 importer.textureCompression = TextureImporterCompression.Uncompressed;
                 importer.spritePixelsPerUnit = PixelSpritePpu;
+                importer.alphaIsTransparency = true;
+            }
+            else if (assetPath.Contains("/battle_sprites/") || assetPath.Contains("/fx/"))
+            {
+                // Curated HD art (CharacterDefinition.battleSprite) and the impact-burst
+                // flipbook -- neither is pixel art, Point filtering just aliases it.
+                // Resolution/aspect varies per asset; BattleVisuals normalizes on-screen
+                // size by world-space height rather than relying on a fixed PPU.
+                importer.filterMode = FilterMode.Bilinear;
+                importer.textureCompression = TextureImporterCompression.Compressed;
                 importer.alphaIsTransparency = true;
             }
             else if (assetPath.Contains("/portraits/") || assetPath.Contains("/backgrounds/"))

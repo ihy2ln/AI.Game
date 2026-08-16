@@ -38,11 +38,11 @@ namespace Game.Battle
             ctrlGo.transform.SetParent(transform, false);
             var ctrl = ctrlGo.AddComponent<BattleController>();
             ctrl.OnRestartRequested += Boot;
-            ctrl.Init(world, visuals);
+            ctrl.Init(world, visuals, cam);
 
             var hudGo = new GameObject("BattleHud");
             hudGo.transform.SetParent(transform, false);
-            hudGo.AddComponent<BattleHud>().Init(ctrl, cam);
+            hudGo.AddComponent<BattleHud>().Init(ctrl, cam, visuals);
 
             Debug.Log(world.LoadedOk
                 ? "[AI.Game] Battle booted (side-view auto-battle vertical slice)."

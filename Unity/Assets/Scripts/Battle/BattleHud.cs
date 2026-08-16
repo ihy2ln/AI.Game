@@ -8,12 +8,14 @@ namespace Game.Battle
     {
         BattleController _ctrl;
         Camera _cam;
-        GUIStyle _title, _body, _name, _big, _sub, _dmg, _btn;
+        BattleVisuals _visuals;
+        GUIStyle _title, _body, _name, _big, _sub, _dmg, _btn, _prompt;
 
-        public void Init(BattleController ctrl, Camera cam)
+        public void Init(BattleController ctrl, Camera cam, BattleVisuals visuals)
         {
             _ctrl = ctrl;
             _cam = cam;
+            _visuals = visuals;
         }
 
         void EnsureStyles()
@@ -37,6 +39,11 @@ namespace Game.Battle
             _sub = new GUIStyle(GUI.skin.label) { fontSize = 16, alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.white } };
             _dmg = new GUIStyle(GUI.skin.label) { fontSize = 20, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             _btn = new GUIStyle(GUI.skin.button) { fontSize = 18, fontStyle = FontStyle.Bold };
+            _prompt = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 18, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = new Color(1f, 0.85f, 0.3f) },
+            };
         }
 
         void OnGUI()
@@ -45,7 +52,8 @@ namespace Game.Battle
             EnsureStyles();
             int w = Screen.width, h = Screen.height;
 
-            GUI.Label(new Rect(0, 12, w, 30), "AI.Game -- Battle (auto)", _title);
+            GUI.Label(new Rect(0, 12, w, 30), $"AI.Game -- Battle ({(_ctrl.ManualMode ? "manual" : "auto")})", _title);
+            DrawModeToggle(w);
 
             DrawRoster(_ctrl.World.PlayerUnits, new Rect(16, 56, 220, 28), false);
             DrawRoster(_ctrl.World.EnemyUnits, new Rect(w - 236, 56, 220, 28), true);
@@ -54,6 +62,7 @@ namespace Game.Battle
             GUI.Label(new Rect(24, h - 48, Mathf.Min(680, w - 48), 30), _ctrl.LastAction, _body);
 
             DrawDamageNumbers();
+            DrawTargetPrompt(w);
 
             if (_ctrl.Outcome != BattleOutcome.InProgress) DrawOutcomeBanner(w, h);
         }
@@ -85,6 +94,34 @@ namespace Game.Battle
             GUI.color = old;
 
             GUI.Label(rect, $"{unit.CurrentHp}/{unit.Stats.hp}", new GUIStyle(_name) { alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.white } });
+        }
+
+        void DrawModeToggle(int w)
+        {
+            string label = _ctrl.ManualMode ? "Mode: Manual (T)" : "Mode: Auto (T)";
+            if (GUI.Button(new Rect(w / 2f - 90, 14, 180, 30), label, _btn)) _ctrl.ToggleMode();
+        }
+
+        void DrawTargetPrompt(int w)
+        {
+            if (_ctrl.PendingActor == null || _cam == null || _visuals == null) return;
+
+            GUI.Label(new Rect(0, 92, w, 26), $"{_ctrl.PendingActor.Definition.displayName}'s turn -- tap a highlighted target",
+                _prompt);
+
+            foreach (var target in _ctrl.PendingTargets)
+            {
+                var pos = _visuals.GetUnitWorldPosition(target);
+                var screen = _cam.WorldToScreenPoint(pos);
+                if (screen.z < 0) continue;
+                var guiPos = new Vector2(screen.x, Screen.height - screen.y);
+
+                var old = GUI.color;
+                GUI.color = new Color(1f, 0.9f, 0.2f, 0.9f);
+                var ring = new Rect(guiPos.x - 55, guiPos.y - 70, 110, 110);
+                GUI.Box(ring, GUIContent.none);
+                GUI.color = old;
+            }
         }
 
         void DrawDamageNumbers()
