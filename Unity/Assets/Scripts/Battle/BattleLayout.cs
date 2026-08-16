@@ -6,8 +6,11 @@ namespace Game.Battle
     /// Column is the only spatial axis that matters -- lane is always 0.</summary>
     public static class BattleLayout
     {
-        public const float ColumnSpacing = 2.4f;
-        public const float UnitScale = 3f;
+        // UnitScale must stay comfortably below ColumnSpacing or adjacent units'
+        // sprite quads overlap -- confirmed visually via a real build, not assumed
+        // (a 3-unit-wide sprite at 2.4 spacing physically overlapped its neighbour).
+        public const float ColumnSpacing = 2.8f;
+        public const float UnitScale = 2f;
         public const float GroundY = -1.6f;
 
         // Centered between column 2 (player front) and column 3 (enemy front), so the

@@ -28,6 +28,7 @@ Unity/Temp/
 Unity/Obj/
 Unity/Build/
 Unity/Builds/
+Unity/Builds/**
 Unity/Logs/
 Unity/UserSettings/
 Unity/MemoryCaptures/
