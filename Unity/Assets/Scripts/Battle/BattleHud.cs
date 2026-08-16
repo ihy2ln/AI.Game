@@ -9,13 +9,25 @@ namespace Game.Battle
         BattleController _ctrl;
         Camera _cam;
         BattleVisuals _visuals;
-        GUIStyle _title, _body, _name, _big, _sub, _dmg, _btn, _prompt;
+        GUIStyle _title, _body, _name, _big, _sub, _dmg, _btn, _prompt, _logEntry, _logRound;
+
+        bool _showLog;
+        Vector2 _logScroll;
 
         public void Init(BattleController ctrl, Camera cam, BattleVisuals visuals)
         {
             _ctrl = ctrl;
             _cam = cam;
             _visuals = visuals;
+        }
+
+        void Update()
+        {
+            if (Input.GetKeyDown(KeyCode.L))
+            {
+                _showLog = !_showLog;
+                if (_showLog) _logScroll = new Vector2(0, float.MaxValue);
+            }
         }
 
         void EnsureStyles()
@@ -44,6 +56,8 @@ namespace Game.Battle
                 fontSize = 18, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter,
                 normal = { textColor = new Color(1f, 0.85f, 0.3f) },
             };
+            _logEntry = new GUIStyle(GUI.skin.label) { fontSize = 13, normal = { textColor = new Color(0.9f, 0.9f, 0.9f) }, wordWrap = true };
+            _logRound = new GUIStyle(GUI.skin.label) { fontSize = 12, fontStyle = FontStyle.Bold, normal = { textColor = new Color(0.91f, 0.69f, 0.35f) } };
         }
 
         void OnGUI()
@@ -63,8 +77,58 @@ namespace Game.Battle
 
             DrawDamageNumbers();
             DrawTargetPrompt(w);
+            DrawLogToggle(w);
+            if (_showLog) DrawLogPanel(w, h);
 
             if (_ctrl.Outcome != BattleOutcome.InProgress) DrawOutcomeBanner(w, h);
+        }
+
+        void DrawLogToggle(int w)
+        {
+            string label = _showLog ? "Hide Log (L)" : "Turn Log (L)";
+            if (GUI.Button(new Rect(w - 150, 14, 134, 26), label, _btn)) _showLog = !_showLog;
+        }
+
+        void DrawLogPanel(int w, int h)
+        {
+            var panel = new Rect(w / 2f - 220, 130, 440, Mathf.Min(h - 220, 420));
+            GUI.Box(panel, GUIContent.none);
+            GUI.Label(new Rect(panel.x + 10, panel.y + 6, panel.width - 20, 22), "Turn Log", _title);
+
+            var viewRect = new Rect(panel.x + 8, panel.y + 32, panel.width - 16, panel.height - 40);
+            float lineHeight = 20f;
+            var entries = _ctrl.Log.Entries;
+            float contentHeight = entries.Count * lineHeight + CountRoundHeaders(entries) * 18f + 8f;
+            var contentRect = new Rect(0, 0, viewRect.width - 20, contentHeight);
+
+            _logScroll = GUI.BeginScrollView(viewRect, _logScroll, contentRect);
+            float y = 0f;
+            int lastRound = -1;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var entry = entries[i];
+                if (entry.Round != lastRound)
+                {
+                    GUI.Label(new Rect(4, y, contentRect.width - 8, 18), $"-- Round {entry.Round} --", _logRound);
+                    y += 18f;
+                    lastRound = entry.Round;
+                }
+                GUI.Label(new Rect(10, y, contentRect.width - 14, lineHeight), entry.Text, _logEntry);
+                y += lineHeight;
+            }
+            GUI.EndScrollView();
+        }
+
+        static int CountRoundHeaders(System.Collections.Generic.IReadOnlyList<BattleLogEntry> entries)
+        {
+            int count = 0, lastRound = -1;
+            foreach (var entry in entries)
+            {
+                if (entry.Round == lastRound) continue;
+                lastRound = entry.Round;
+                count++;
+            }
+            return count;
         }
 
         void DrawRoster(System.Collections.Generic.IEnumerable<BattleUnit> units, Rect origin, bool rightAligned)

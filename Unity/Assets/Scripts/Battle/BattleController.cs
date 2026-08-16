@@ -28,7 +28,8 @@ namespace Game.Battle
     {
         public BattleWorld World { get; private set; }
         public BattleOutcome Outcome { get; private set; } = BattleOutcome.InProgress;
-        public string LastAction { get; private set; } = "";
+        public readonly BattleLog Log = new();
+        public string LastAction => Log.Entries.Count > 0 ? Log.Entries[^1].Text : "";
         public readonly List<DamageNumber> DamageNumbers = new();
 
         public bool ManualMode { get; private set; }
@@ -42,7 +43,8 @@ namespace Game.Battle
         TurnOrder _turnOrder;
         List<BattleUnit> _pendingTargets = new();
         BattleUnit _submittedTarget;
-        const float TurnDelaySeconds = 0.9f;
+        const float PreActionDelaySeconds = 0.35f;
+        const float ImpactHoldSeconds = 0.5f;
 
         public void Init(BattleWorld world, BattleVisuals visuals, Camera cam)
         {
@@ -70,6 +72,8 @@ namespace Game.Battle
 
         public void ToggleMode() => ManualMode = !ManualMode;
 
+        void LogLine(string text) => Log.Add(_turnOrder.RoundNumber, text);
+
         void HandleClick(Vector3 screenPos)
         {
             if (_cam == null || !_visuals.TryGetUnitAtScreenPoint(screenPos, _cam, out var clicked)) return;
@@ -84,19 +88,19 @@ namespace Game.Battle
                 var unit = _turnOrder.Next();
                 if (unit == null) break;
 
-                yield return new WaitForSeconds(TurnDelaySeconds);
+                yield return new WaitForSeconds(PreActionDelaySeconds);
 
                 var skill = unit.Definition.standardSkill;
                 if (skill == null || skill.pattern == null)
                 {
-                    LastAction = $"{unit.Definition.displayName} has no usable skill.";
+                    LogLine($"{unit.Definition.displayName} has no usable skill.");
                     continue;
                 }
 
                 var targets = TargetResolver.GetValidTargets(unit, skill, World.AllUnits);
                 if (targets.Count == 0)
                 {
-                    LastAction = $"{unit.Definition.displayName} has no valid target.";
+                    LogLine($"{unit.Definition.displayName} has no valid target.");
                     continue;
                 }
 
@@ -106,7 +110,7 @@ namespace Game.Battle
                     PendingActor = unit;
                     _pendingTargets = targets;
                     _submittedTarget = null;
-                    LastAction = $"{unit.Definition.displayName}'s turn -- tap a target.";
+                    LogLine($"{unit.Definition.displayName}'s turn -- tap a target.");
                     yield return new WaitUntil(() => _submittedTarget != null);
                     target = _submittedTarget;
                     PendingActor = null;
@@ -117,11 +121,14 @@ namespace Game.Battle
                     target = targets[UnityEngine.Random.Range(0, targets.Count)];
                 }
 
+                yield return _visuals.MoveToStage(unit, target);
                 ResolveAction(unit, skill, target);
+                yield return new WaitForSeconds(ImpactHoldSeconds);
+                yield return _visuals.ReturnToDock(unit, target);
             }
 
             Outcome = World.PlayerDefeated ? BattleOutcome.EnemyVictory : BattleOutcome.PlayerVictory;
-            LastAction = Outcome == BattleOutcome.PlayerVictory ? "Victory!" : "Defeat...";
+            LogLine(Outcome == BattleOutcome.PlayerVictory ? "Victory!" : "Defeat...");
         }
 
         void ResolveAction(BattleUnit unit, SkillDefinition skill, BattleUnit target)
@@ -130,7 +137,7 @@ namespace Game.Battle
             {
                 int heal = DamageCalculator.ComputeHeal(unit, skill);
                 target.ApplyHeal(heal);
-                LastAction = $"{unit.Definition.displayName} heals {target.Definition.displayName} for {heal}.";
+                LogLine($"{unit.Definition.displayName} heals {target.Definition.displayName} for {heal}.");
                 SpawnDamageNumber(target, $"+{heal}", new Color(0.55f, 0.9f, 0.55f));
             }
             else
@@ -138,7 +145,7 @@ namespace Game.Battle
                 int distance = TargetResolver.ColumnDistance(unit, target);
                 int damage = DamageCalculator.ComputeDamage(unit, target, skill, distance);
                 target.ApplyDamage(damage);
-                LastAction = $"{unit.Definition.displayName} hits {target.Definition.displayName} for {damage}.";
+                LogLine($"{unit.Definition.displayName} hits {target.Definition.displayName} for {damage}.");
                 SpawnDamageNumber(target, damage.ToString(), Color.white);
                 _visuals.FlashHit(target);
                 _visuals.PlayImpactFx(target);

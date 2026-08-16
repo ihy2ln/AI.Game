@@ -18,6 +18,12 @@ manual/turn-based mode (press `T`), HP bars, hit VFX, win/lose. Runs in-editor
 APK (build succeeds; **not verified on a physical device** — no adb on this machine).
 All 5 milestones below are done and pushed to GitHub.
 
+M6/M7 (this session) layer a reviewable **turn log** (`L` to open) and a genuine
+**three-panel presentation** on top of that: allies dock left, enemies dock right, and
+the acting unit + its target now tween into the empty centre "stage" to perform each
+turn's action before returning to their dock — see "What changed" below and
+[[Battle-System]].
+
 ## What changed from the original design
 
 1. **Combat model/camera — pivoted at M3.** FOUNDATION.md specifies an isometric
@@ -47,6 +53,14 @@ All 5 milestones below are done and pushed to GitHub.
    the proven, tested C# pipeline (`BattleAssetBuilder.cs` etc.) as the actual game
    logic, and use AssetForge only where it's genuinely a better fit (asset
    library/editing) — revisit this if the project owner wants something more drastic.
+4. **Presentation split into three panels — M7.** The single-lane rank formation from
+   M3 still governs targeting/range, but `BattleLayout` now places player docks and
+   enemy docks in two clusters near the screen edges instead of one continuous line,
+   leaving a wide empty centre gap. `BattleVisuals.MoveToStage`/`ReturnToDock` tween
+   the acting unit and its target into that gap for each turn's cinematic beat, then
+   back to their dock — so combat logic still only ever reasons about "who acts on
+   whom" via `Column`, and the visual staging is a presentation-only concern layered
+   on top.
 
 ## Roster
 
@@ -69,11 +83,20 @@ All 5 milestones below are done and pushed to GitHub.
 | M3 | Side-view battle logic, scene, EditMode tests | `v0.4.0-m3-battle-logic` |
 | M4 | Curated HD roster art, hit FX, manual/turn-based mode | `v0.4.0-m4-roster-and-manual-mode` |
 | M5 | Android build (APK builds; on-device unverified) | *(not yet tagged — see below)* |
+| M6 | Turn log (`BattleLog`, scrollable review panel, `L` to open) | *(not yet tagged)* |
+| M7 | Three-panel layout: docked ally/enemy rosters + centre-stage cinematic action | *(not yet tagged)* |
 
-Each milestone's commit history has a `NOTES.md` snapshot under
-`AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`, per this
-repo's existing per-section convention. M4 skipped the snapshot/zip step (time
-pressure) — worth backfilling if a session has spare time.
+Each of M0-M2's commits has a `NOTES.md` snapshot under
+`AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
+per-milestone full-tree snapshot step was dropped from M3 onward (M4's status note
+already flagged it as skipped for time) — it duplicated the whole `Unity/` tree per
+milestone for state git history already gives you for free. M6/M7 follow the M3-M5
+precedent: commit + docs update, no snapshot/zip.
+
+## Controls
+
+`T` toggle auto/manual mode · `L` open/close the turn log · click a highlighted target
+in manual mode.
 
 ## How to run it
 

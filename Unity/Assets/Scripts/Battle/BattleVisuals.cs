@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -92,6 +93,63 @@ namespace Game.Battle
 
         public Vector3 GetUnitWorldPosition(BattleUnit unit) =>
             _unitViews.TryGetValue(unit, out var go) ? go.transform.position + Vector3.up * 1.6f : Vector3.zero;
+
+        /// <summary>A unit's resting position in its side dock -- the "return to" point
+        /// after a centre-stage cinematic beat, and the source of truth BattleLayout
+        /// itself uses when a unit's view is first built.</summary>
+        public Vector3 DockPosition(BattleUnit unit) => BattleLayout.UnitPosition(unit.Column);
+
+        const float StageTweenSeconds = 0.25f;
+
+        /// <summary>Tweens the acting unit and its target from their docks onto the
+        /// centre stage (each on its own faction's side) for a turn's cinematic beat.
+        /// Both may already be off-dock (harmless no-op tween if so). No-op for a unit
+        /// with no view (e.g. missing/never-built).</summary>
+        public IEnumerator MoveToStage(BattleUnit actor, BattleUnit target)
+        {
+            yield return TweenPair(actor, BattleLayout.StagePosition(actor.Faction),
+                target, BattleLayout.StagePosition(target.Faction));
+        }
+
+        /// <summary>Reverse of MoveToStage -- tweens both back to their dock positions.</summary>
+        public IEnumerator ReturnToDock(BattleUnit actor, BattleUnit target)
+        {
+            yield return TweenPair(actor, DockPosition(actor), target, DockPosition(target));
+        }
+
+        IEnumerator TweenPair(BattleUnit unitA, Vector3 toA, BattleUnit unitB, Vector3 toB)
+        {
+            _unitViews.TryGetValue(unitA, out var goA);
+            _unitViews.TryGetValue(unitB, out var goB);
+            if (goA == null && goB == null) yield break;
+
+            var fromA = goA != null ? goA.transform.position : toA;
+            var fromB = goB != null ? goB.transform.position : toB;
+
+            float t = 0f;
+            while (t < StageTweenSeconds)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / StageTweenSeconds));
+                if (goA != null) goA.transform.position = Vector3.Lerp(fromA, toA, k);
+                if (goB != null) goB.transform.position = Vector3.Lerp(fromB, toB, k);
+                yield return null;
+            }
+            if (goA != null) goA.transform.position = toA;
+            if (goB != null) goB.transform.position = toB;
+        }
+
+        /// <summary>Re-applies every unit's dead/alive tint from current HP -- needed
+        /// after BattleHistory.Restore snapshots HP back onto units outside the normal
+        /// ApplyDamage path (undo can revive a unit SyncDefeated already greyed out).</summary>
+        public void SyncAll(BattleWorld world)
+        {
+            foreach (var unit in world.AllUnits)
+            {
+                if (!_unitRenderers.TryGetValue(unit, out var sr)) continue;
+                sr.color = unit.IsAlive ? Color.white : new Color(0.35f, 0.35f, 0.35f, 0.6f);
+            }
+        }
 
         public void FlashHit(BattleUnit unit)
         {

@@ -1,27 +1,48 @@
 using UnityEngine;
+using Game.Data;
 
 namespace Game.Battle
 {
-    /// <summary>Side-view (Darkest Dungeon / Slay the Spire style) layout constants.
-    /// Column is the only spatial axis that matters -- lane is always 0.</summary>
+    /// <summary>Three-panel side-view layout: allies dock left, enemies dock right, and
+    /// the gap between the two front ranks is the empty centre "stage" where
+    /// BattleVisuals.MoveToStage/ReturnToDock actually stage a turn's action -- see
+    /// BattleController.RunBattle. Column is still the only spatial axis that matters
+    /// for targeting/range (TargetResolver) -- only the *presentation* X position
+    /// changed from a single continuous line to two clustered docks.</summary>
     public static class BattleLayout
     {
-        // ColumnSpacing must stay comfortably above the widest expected sprite's
+        // DockColumnSpacing must stay comfortably above the widest expected sprite's
         // world-space width or adjacent units overlap -- confirmed visually via a real
         // build, not assumed (a 3-unit-wide sprite at 2.4 spacing physically overlapped
-        // its neighbour). Units now normalize to TargetUnitHeight regardless of source
+        // its neighbour). Units normalize to TargetUnitHeight regardless of source
         // resolution/aspect (see BattleVisuals) instead of a flat scale multiplier, so
         // a square-ish sprite at that height is ~TargetUnitHeight wide in the worst
-        // case -- ColumnSpacing leaves comfortable margin above that.
+        // case -- DockColumnSpacing leaves comfortable margin above that.
         public const float TargetUnitHeight = 3.0f;
-        public const float ColumnSpacing = 3.6f;
+        public const float DockColumnSpacing = 1.9f;
+
+        // Distance of each side's front rank from screen centre -- deliberately large
+        // relative to DockColumnSpacing so the reserved middle stage reads as the
+        // visual focal point of the screen, not a sliver between two lineups.
+        public const float DockFrontOffset = 6.2f;
+
+        // Where an acting/targeted unit stands during its centre-stage cinematic beat
+        // (BattleVisuals.MoveToStage), on its own faction's side of centre.
+        public const float StageOffset = 2.2f;
+
         public const float GroundY = -2.1f;
 
-        // Centered between column 2 (player front) and column 3 (enemy front), so the
-        // two front-liners face off just left/right of screen centre.
-        public static float ColumnToWorldX(int column) => (column - 2.5f) * ColumnSpacing;
+        // Player columns 0(back)..2(front) cluster left of centre, front nearest centre.
+        // Enemy columns 3(front)..5(back) mirror on the right, so the two front-liners
+        // (2 vs 3) are still the pair closest to screen centre.
+        public static float ColumnToWorldX(int column) => column <= 2
+            ? -DockFrontOffset - (2 - column) * DockColumnSpacing
+            : DockFrontOffset + (column - 3) * DockColumnSpacing;
 
         public static Vector3 UnitPosition(int column) => new(ColumnToWorldX(column), GroundY, 0f);
+
+        public static Vector3 StagePosition(Faction faction) =>
+            new(faction == Faction.Player ? -StageOffset : StageOffset, GroundY, 0f);
 
         public static void ApplyBattleCamera(Camera cam)
         {
