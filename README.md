@@ -36,4 +36,4 @@ Stardew × Rune Factory clearing on a **4×4** plot, Brown Dust 2–inspired lig
 3. Larger overgrown farm map — see `Unity/Assets/Art/README.md` for the Home vs Overworld camera plan
 4. Crops (CropDefinition) / tools / stamina
 5. Unity Android build pipeline
-6. Combat / town sections
+6. Combat / town sections — in progress on `feature/battle-slice`, see [`PROJECT-README.md`](PROJECT-README.md)

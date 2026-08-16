@@ -7,12 +7,15 @@ Thumbs.db
 dist/
 .cache/
 android-sdk/
-tools/
 android/.gradle/
 android/**/build/
 android/local.properties
 *.apk
-!releases/*.apk
+!releases/AI.Game-Farm-v0.2.0-debug.apk
+releases/zips/*.apk
+
+# Battle slice: APKs go to GitHub Releases, not git history
+releases/AI.Game-Battle-*.apk
 
 # Unity
 Unity/Library/
