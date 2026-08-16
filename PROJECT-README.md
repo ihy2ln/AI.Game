@@ -91,15 +91,22 @@ slice's assets; all 17 assets came from the `Tools/ComfyUI/` pipeline built in M
   EditMode tests (`Unity/Assets/Tests/`) cover melee range, ranged distance scaling,
   damage floor, ally-targeting for heals, and facing-mirrored range -- added
   `com.unity.test-framework` to `Packages/manifest.json` and a `Game.Tests.asmdef`.
-- **Verified** -- project owner closed their Editor session so the assistant could run
-  it headlessly (`-batchmode`). Found and fixed a real bug in the process:
-  `Game.Tests.asmdef` referencing `"Assembly-CSharp"` by plain string name doesn't
-  compile in this Unity version; fixed by giving `Data/` and `Battle/` their own
-  `Game.Data`/`Game.Battle` asmdefs and having the test assembly reference those
-  directly. Project compiles clean, `Create Battle Scene` runs clean and produces real
-  (non-null) asset references, and **9/9 EditMode tests pass**. Still needs an actual
-  Play Mode run (visual/gameplay check) -- batchmode can verify compilation, asset
-  wiring, and tests, but not what it looks like on screen.
+- **Fully verified, including visually.** Batchmode caught and fixed a compile bug
+  (`Game.Tests.asmdef` -> proper `Game.Data`/`Game.Battle` asmdefs), 9/9 EditMode tests
+  pass. Beyond that: built a Windows standalone dev player
+  (`BuildBattleStandalone.cs`, `AI.Game > Battle > Build Windows Standalone (dev)`),
+  launched it, and captured real screenshots of it running. Found and fixed a real
+  layout bug this way that nothing else would have caught: `BattleLayout.UnitScale`
+  (3) exceeded `ColumnSpacing` (2.4), so units visually overlapped into one cluster
+  instead of forming the left/right formation -- fixed to `ColumnSpacing = 2.8`,
+  `UnitScale = 2`. Confirmed via screenshots: clean formation, varied targeting,
+  correct HP color thresholds, death handling, and a full VICTORY banner + Restart
+  button at the end of a real auto-battle.
+- **Known art-quality gaps** (not code bugs, not fixing without regenerating assets
+  per project owner's "no more asset generation" instruction): `enemy_support`'s
+  sprite still shows a visible chroma-key fringe (flagged in M2 notes); all six
+  sprites are cropped at the feet -- confirmed this is baked into the generated
+  32x32 art itself (checked the raw sprite pixels), not a camera/layout issue.
 
 ## Next up
 
