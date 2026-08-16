@@ -1,0 +1,9 @@
+{
+  "prompt": { "node": "5", "input": "prompt" },
+  "width": { "node": "5", "input": "width" },
+  "height": { "node": "5", "input": "height" },
+  "frame_count": { "node": "5", "input": "length" },
+  "seed": { "node": "10", "input": "noise_seed" },
+  "chroma_key_color": { "node": "14", "input": "ClickOnMe" },
+  "filename_prefix": { "node": "15", "input": "filename_prefix" }
+}

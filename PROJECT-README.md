@@ -18,8 +18,8 @@ deferred — not used in this slice.
 
 | # | Milestone | Tag | Status |
 |---|---|---|---|
-| M0 | Branch, `.gitignore`, folder scaffold, docs stub | `v0.4.0-m0-scaffold` | In progress |
-| M1 | ComfyUI pipeline (workflows, manifest, generate.py, postprocess.py) | `v0.4.0-m1-comfyui-pipeline` | Not started |
+| M0 | Branch, `.gitignore`, folder scaffold, docs stub | `v0.4.0-m0-scaffold` | Done |
+| M1 | ComfyUI pipeline (workflows, manifest, generate.py, postprocess.py) | `v0.4.0-m1-comfyui-pipeline` | Done |
 | M2 | Generated assets + import automation + ScriptableObject build | `v0.4.0-m2-assets` | Not started |
 | M3 | Battle logic (grid, turns, targeting, damage) + tests, placeholder art | `v0.4.0-m3-battle-logic` | Not started |
 | M4 | Visuals: sprites, background, chroma-key FMV, HUD, damage numbers | `v0.4.0-m4-visuals` | Not started |
@@ -37,8 +37,18 @@ deferred — not used in this slice.
 
 ## What works
 
-Nothing yet — M0 in progress.
+- ComfyUI asset generation pipeline: `Tools/ComfyUI/manifest.yaml` (17 assets),
+  `generate.py` (submit/poll/fetch, `--dry-run`, `--force`, `--only`), `postprocess.py`
+  (chroma-key transparency, palette quantization, video re-encode, FX sheet packing).
+- Four validated ComfyUI API-format workflows (`workflows/*.json` +
+  `*.patchmap.json`): Krea2 stills (sprites/portraits/backgrounds), MiniMax H3
+  reference-to-video clips, MiniMax H3 + chroma-key FX flipbook frames. See
+  `Tools/ComfyUI/README.md` "Workflow node graphs" for the real gotchas found (image
+  upload requirement, non-literal frame counts, per-effect chroma key color, etc.).
+- Smoke-tested end to end: `python generate.py --only bg_battle01` produced a real
+  1920x1080 battle background at `Unity/Assets/Art/Generated/backgrounds/bg_battle01.png`.
 
 ## Next up
 
-M1: ComfyUI pipeline.
+M2: generate the remaining 16 assets, then Unity import automation
+(`GeneratedAssetImporter.cs`, `AI.Game -> Battle -> Build Assets From Manifest`).

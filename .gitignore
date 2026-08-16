@@ -17,6 +17,11 @@ releases/zips/*.apk
 # Battle slice: APKs go to GitHub Releases, not git history
 releases/AI.Game-Battle-*.apk
 
+# Battle slice: raw pre-postprocess ComfyUI output, not the final committed assets
+Tools/ComfyUI/.generated_raw/
+__pycache__/
+*.pyc
+
 # Unity
 Unity/Library/
 Unity/Temp/

@@ -1,0 +1,276 @@
+# Battle vertical slice asset manifest.
+# Every asset the slice needs, in one file. Seeds are pinned -- same manifest + same
+# models = same assets, regeneration is deterministic and reviewable as a diff.
+# See Tools/ComfyUI/README.md and generate.py --help.
+
+comfyui:
+  base_url: "http://127.0.0.1:8188"
+
+models:
+  # Confirmed with project owner -- do not swap without asking (see M1 notes in
+  # PROJECT-README.md). Avoid the NSFW-branded Krea2 variants also present on this
+  # machine (pornmasterKrea2, Krea2_HMNSFW_AIO, saggy-krea) -- not what this project wants.
+  still_checkpoint: "Krea2\\moodyKrea2Mix_v50.safetensors"
+  clip_diffusion_model: "MiniMaxH3\\minimax_h3_ref2va_pruned_int8_convrot.safetensors"
+  clip_vae: "MiniMaxH3\\minimax_h3_video_vae_fp16.safetensors"
+  clip_turbo_lora: "H3\\minimax_h3_turbo_4step_ckpt500.safetensors"
+
+# FOUNDATION.md 3.4 -- two separate prompt templates, one for environment (haze,
+# desaturation, muted earth tones) and one for characters (rim lighting, high local
+# contrast, warmer skin, strong silhouette). Master palette: Wuthering Waves-style,
+# desaturated/cool/muted, quantized to 32-48 colors in postprocessing, not prompted.
+prompt_templates:
+  environment_suffix: >-
+    desaturated cool muted color palette, hazy atmosphere, painterly anime
+    background art, wuthering waves style, cinematic lighting, no text, no watermark
+  character_suffix: >-
+    anime character art, rim lighting, high local contrast, strong silhouette,
+    warm skin tones, clean linework, dragon traveler / brown dust 2 art style,
+    stylized adult character design, plain solid color background, no text, no watermark
+  negative_default: >-
+    text, watermark, signature, blurry, extra limbs, deformed hands, lowres,
+    jpeg artifacts, cropped
+
+# Solid background used for sprite/FX stills so postprocess.py can key them to
+# transparency with the same technique as the video chroma key (simple color-distance
+# threshold, no ML segmentation dependency).
+chroma_key: "#00FF00"
+chroma_tolerance: 40
+
+output_root: "Unity/Assets/Art/Generated"
+
+assets:
+  # -- Battle background (1) --------------------------------------------------
+  - id: bg_battle01
+    type: background
+    workflow: background.json
+    prompt: >-
+      wide battle arena, modern-day archipelago island setting, open clearing
+      with distant coastline, isometric-friendly wide framing
+    seed: 100001
+    gen_width: 1536
+    gen_height: 864
+    final_width: 1920
+    final_height: 1080
+    output: "backgrounds/bg_battle01.png"
+
+  # -- Unit pixel sprites (6), 32x32, transparent -----------------------------
+  - id: char_player_melee_sprite32
+    type: sprite
+    unit_id: player_melee
+    workflow: character_sprite.json
+    prompt: "young swordfighter, front-line melee warrior, sword and light armor, idle battle stance"
+    seed: 100101
+    gen_width: 512
+    gen_height: 512
+    final_width: 32
+    final_height: 32
+    keyed: true
+    output: "sprites/char_player_melee_sprite32.png"
+
+  - id: char_player_ranged_sprite32
+    type: sprite
+    unit_id: player_ranged
+    workflow: character_sprite.json
+    prompt: "young archer, back-line ranged fighter, bow and light cloak, idle battle stance"
+    seed: 100102
+    gen_width: 512
+    gen_height: 512
+    final_width: 32
+    final_height: 32
+    keyed: true
+    output: "sprites/char_player_ranged_sprite32.png"
+
+  - id: char_player_support_sprite32
+    type: sprite
+    unit_id: player_support
+    workflow: character_sprite.json
+    prompt: "young healer, support caster, staff and flowing robe, idle battle stance"
+    seed: 100103
+    gen_width: 512
+    gen_height: 512
+    final_width: 32
+    final_height: 32
+    keyed: true
+    output: "sprites/char_player_support_sprite32.png"
+
+  - id: char_enemy_melee_sprite32
+    type: sprite
+    unit_id: enemy_melee
+    workflow: character_sprite.json
+    prompt: "hostile melee brute, heavy weapon and dark armor, aggressive idle stance"
+    seed: 100104
+    gen_width: 512
+    gen_height: 512
+    final_width: 32
+    final_height: 32
+    keyed: true
+    output: "sprites/char_enemy_melee_sprite32.png"
+
+  - id: char_enemy_ranged_sprite32
+    type: sprite
+    unit_id: enemy_ranged
+    workflow: character_sprite.json
+    prompt: "hostile ranged caster, dark robes, spell-casting idle stance"
+    seed: 100105
+    gen_width: 512
+    gen_height: 512
+    final_width: 32
+    final_height: 32
+    keyed: true
+    output: "sprites/char_enemy_ranged_sprite32.png"
+
+  - id: char_enemy_support_sprite32
+    type: sprite
+    unit_id: enemy_support
+    workflow: character_sprite.json
+    prompt: "hostile support shaman, dark totems and cloak, chanting idle stance"
+    seed: 100106
+    gen_width: 512
+    gen_height: 512
+    final_width: 32
+    final_height: 32
+    keyed: true
+    output: "sprites/char_enemy_support_sprite32.png"
+
+  # -- Unit portraits (6), 256x256, HUD/turn-order strip ----------------------
+  - id: char_player_melee_portrait
+    type: portrait
+    unit_id: player_melee
+    workflow: character_sprite.json
+    prompt: "young swordfighter, front-line melee warrior, confident expression, bust portrait"
+    seed: 100201
+    gen_width: 512
+    gen_height: 512
+    final_width: 256
+    final_height: 256
+    keyed: false
+    output: "portraits/char_player_melee_portrait.png"
+
+  - id: char_player_ranged_portrait
+    type: portrait
+    unit_id: player_ranged
+    workflow: character_sprite.json
+    prompt: "young archer, back-line ranged fighter, focused expression, bust portrait"
+    seed: 100202
+    gen_width: 512
+    gen_height: 512
+    final_width: 256
+    final_height: 256
+    keyed: false
+    output: "portraits/char_player_ranged_portrait.png"
+
+  - id: char_player_support_portrait
+    type: portrait
+    unit_id: player_support
+    workflow: character_sprite.json
+    prompt: "young healer, support caster, gentle expression, bust portrait"
+    seed: 100203
+    gen_width: 512
+    gen_height: 512
+    final_width: 256
+    final_height: 256
+    keyed: false
+    output: "portraits/char_player_support_portrait.png"
+
+  - id: char_enemy_melee_portrait
+    type: portrait
+    unit_id: enemy_melee
+    workflow: character_sprite.json
+    prompt: "hostile melee brute, heavy weapon, menacing expression, bust portrait"
+    seed: 100204
+    gen_width: 512
+    gen_height: 512
+    final_width: 256
+    final_height: 256
+    keyed: false
+    output: "portraits/char_enemy_melee_portrait.png"
+
+  - id: char_enemy_ranged_portrait
+    type: portrait
+    unit_id: enemy_ranged
+    workflow: character_sprite.json
+    prompt: "hostile ranged caster, dark robes, cold expression, bust portrait"
+    seed: 100205
+    gen_width: 512
+    gen_height: 512
+    final_width: 256
+    final_height: 256
+    keyed: false
+    output: "portraits/char_enemy_ranged_portrait.png"
+
+  - id: char_enemy_support_portrait
+    type: portrait
+    unit_id: enemy_support
+    workflow: character_sprite.json
+    prompt: "hostile support shaman, dark totems, sinister expression, bust portrait"
+    seed: 100206
+    gen_width: 512
+    gen_height: 512
+    final_width: 256
+    final_height: 256
+    keyed: false
+    output: "portraits/char_enemy_support_portrait.png"
+
+  # -- Attack clips (3), shared across units by element/skill type ------------
+  # Each clip is generated from its own throwaway i2v reference frame (rendered via
+  # character_sprite.json at clip generation time, same seed, discarded after use) --
+  # this satisfies FOUNDATION.md's "i2v from one canonical reference image, fixed
+  # seed" consistency rule without needing final character art to exist yet.
+  - id: clip_melee_basic
+    type: clip
+    workflow: character_clip.json
+    reference_prompt: "young swordfighter mid-swing, dynamic action pose, plain solid color background"
+    prompt: "character swings a sword forward in a fast melee attack, impact on the swing"
+    seed: 100301
+    gen_width: 512
+    gen_height: 768
+    fps: 24
+    frame_count: 32
+    impact_frames: [18]
+    output: "clips/clip_melee_basic.mp4"
+
+  - id: clip_ranged_basic
+    type: clip
+    workflow: character_clip.json
+    reference_prompt: "young archer drawing a bow, dynamic action pose, plain solid color background"
+    prompt: "character draws a bow and fires an arrow forward in a fast ranged attack"
+    seed: 100302
+    gen_width: 512
+    gen_height: 768
+    fps: 24
+    frame_count: 32
+    impact_frames: [22]
+    output: "clips/clip_ranged_basic.mp4"
+
+  - id: clip_heal_basic
+    type: clip
+    workflow: character_clip.json
+    reference_prompt: "young healer channeling magic, staff raised, plain solid color background"
+    prompt: "character channels healing light from a raised staff, gentle casting motion"
+    seed: 100303
+    gen_width: 512
+    gen_height: 768
+    fps: 24
+    frame_count: 32
+    impact_frames: [16, 24]
+    output: "clips/clip_heal_basic.mp4"
+
+  # -- Hit FX flipbook (1), 8 frames, transparent, packed to a sprite sheet ----
+  - id: fx_hit_impact
+    type: fx
+    workflow: fx.json
+    prompt: "small bright impact burst, spark flash, simple flat game vfx, radial shape"
+    seed: 100401
+    gen_width: 256
+    gen_height: 256
+    final_width: 64
+    final_height: 64
+    frame_count: 8
+    keyed: true
+    prekeyed: true
+    # Fire/orange effect palette overlaps the project's usual green key -- blue keys
+    # cleanly instead. See Tools/ComfyUI/README.md "Workflow node graphs" section.
+    chroma_key_override: "#0000FF"
+    chroma_tolerance_override: 18
+    output: "fx/fx_hit_impact_sheet.png"
