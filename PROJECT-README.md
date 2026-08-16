@@ -91,9 +91,15 @@ slice's assets; all 17 assets came from the `Tools/ComfyUI/` pipeline built in M
   EditMode tests (`Unity/Assets/Tests/`) cover melee range, ranged distance scaling,
   damage floor, ally-targeting for heals, and facing-mirrored range -- added
   `com.unity.test-framework` to `Packages/manifest.json` and a `Game.Tests.asmdef`.
-- **Unverified like M2's editor code** -- same reason (no batchmode run possible while
-  the project owner has the Editor open). Written carefully but needs an actual Play
-  Mode run to confirm.
+- **Verified** -- project owner closed their Editor session so the assistant could run
+  it headlessly (`-batchmode`). Found and fixed a real bug in the process:
+  `Game.Tests.asmdef` referencing `"Assembly-CSharp"` by plain string name doesn't
+  compile in this Unity version; fixed by giving `Data/` and `Battle/` their own
+  `Game.Data`/`Game.Battle` asmdefs and having the test assembly reference those
+  directly. Project compiles clean, `Create Battle Scene` runs clean and produces real
+  (non-null) asset references, and **9/9 EditMode tests pass**. Still needs an actual
+  Play Mode run (visual/gameplay check) -- batchmode can verify compilation, asset
+  wiring, and tests, but not what it looks like on screen.
 
 ## Next up
 
