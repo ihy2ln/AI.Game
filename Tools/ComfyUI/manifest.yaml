@@ -27,6 +27,12 @@ prompt_templates:
     anime character art, rim lighting, high local contrast, strong silhouette,
     warm skin tones, clean linework, dragon traveler / brown dust 2 art style,
     stylized adult character design, plain solid color background, no text, no watermark
+  # Sprites specifically need an explicit, named, saturated key color -- "plain solid
+  # color background" alone was observed producing an unkeyable neutral studio-brown
+  # backdrop instead. Applied only to sprite-type assets, not portraits (see generate.py).
+  sprite_chroma_suffix: >-
+    solid pure bright green chroma key background, flat green screen backdrop,
+    no gradient, no shadow on background
   negative_default: >-
     text, watermark, signature, blurry, extra limbs, deformed hands, lowres,
     jpeg artifacts, cropped
@@ -36,6 +42,10 @@ prompt_templates:
 # threshold, no ML segmentation dependency).
 chroma_key: "#00FF00"
 chroma_tolerance: 40
+# Sprite backgrounds are keyed against a per-image sampled color, not the fixed key
+# above (Krea2's "green screen" has a lighting gradient a fixed key doesn't survive --
+# see postprocess.sample_background_key). This tolerance pairs with that sampling.
+sprite_chroma_tolerance: 70
 
 output_root: "Unity/Assets/Art/Generated"
 
@@ -268,9 +278,11 @@ assets:
     final_height: 64
     frame_count: 8
     keyed: true
-    prekeyed: true
-    # Fire/orange effect palette overlaps the project's usual green key -- blue keys
-    # cleanly instead. See Tools/ComfyUI/README.md "Workflow node graphs" section.
-    chroma_key_override: "#0000FF"
-    chroma_tolerance_override: 18
+    # CRTChromaKeyOverlay's "ClickOnMe" input did not reliably key to a requested
+    # color in practice (observed output stayed fully opaque, background rendered
+    # dark brown regardless of the blue requested) -- do not trust prekeyed=true.
+    # Key in postprocess.py instead, against the actually-observed background color.
+    prekeyed: false
+    chroma_key_override: "#3F200D"
+    chroma_tolerance_override: 70
     output: "fx/fx_hit_impact_sheet.png"

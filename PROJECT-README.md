@@ -20,7 +20,7 @@ deferred — not used in this slice.
 |---|---|---|---|
 | M0 | Branch, `.gitignore`, folder scaffold, docs stub | `v0.4.0-m0-scaffold` | Done |
 | M1 | ComfyUI pipeline (workflows, manifest, generate.py, postprocess.py) | `v0.4.0-m1-comfyui-pipeline` | Done |
-| M2 | Generated assets + import automation + ScriptableObject build | `v0.4.0-m2-assets` | Not started |
+| M2 | Generated assets + import automation + ScriptableObject build | `v0.4.0-m2-assets` | Done |
 | M3 | Battle logic (grid, turns, targeting, damage) + tests, placeholder art | `v0.4.0-m3-battle-logic` | Not started |
 | M4 | Visuals: sprites, background, chroma-key FMV, HUD, damage numbers | `v0.4.0-m4-visuals` | Not started |
 | M5 | Android build + on-device verification | `v0.4.0-m5-android-apk` | Not started |
@@ -48,7 +48,25 @@ deferred — not used in this slice.
 - Smoke-tested end to end: `python generate.py --only bg_battle01` produced a real
   1920x1080 battle background at `Unity/Assets/Art/Generated/backgrounds/bg_battle01.png`.
 
+- All 17 battle-slice assets generated and verified: background (1920x1080),
+  6 pixel sprites (32x32, real transparency via per-image sampled chroma key --
+  fixed a fixed-key bug where Krea2's background gradient didn't survive a single
+  project-wide key color), 6 portraits (256x256), 3 attack clips (h264 mp4,
+  512x768@24fps, ~39 frames), 1 FX hit flipbook (8 frames, transparent, packed
+  sheet + rect JSON).
+- `GeneratedAssetImporter.cs` (AssetPostprocessor: point-filtered/uncompressed for
+  sprites+FX, bilinear/compressed for portraits/backgrounds) and
+  `BattleAssetBuilder.cs` (`AI.Game -> Battle -> Build Assets From Manifest` menu
+  item; builds ClipSet/SkillPattern/SkillDefinition/CharacterDefinition/MapDefinition
+  ScriptableObjects into `Resources/Battle/` from `manifest.export.json`) are written
+  but **unverified** -- no local Unity Editor install exists to compile/run them
+  against (see "Known environment gaps" above). Written carefully against documented
+  Unity APIs and cross-checked against this project's own conventions (e.g. avoided
+  `Dictionary.GetValueOrDefault`, unavailable under this project's .NET Standard 2.0
+  API compatibility level) -- but treat as unverified until an Editor actually opens
+  this project and runs the menu item.
+
 ## Next up
 
-M2: generate the remaining 16 assets, then Unity import automation
-(`GeneratedAssetImporter.cs`, `AI.Game -> Battle -> Build Assets From Manifest`).
+M3: headless battle logic (grid, turn order, targeting, damage) with EditMode tests,
+placeholder-art-only battle scene.

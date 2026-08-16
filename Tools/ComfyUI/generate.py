@@ -37,6 +37,15 @@ def load_manifest() -> dict:
     return yaml.safe_load((ROOT / "manifest.yaml").read_text(encoding="utf-8"))
 
 
+def export_manifest_json(manifest: dict) -> None:
+    """Unity has no YAML parser in this project (no Newtonsoft.Json package either) --
+    write a flat JSON mirror of the asset list so the Editor-side asset builder
+    (GeneratedAssetImporter.cs / BattleAssetBuilder.cs) can read it with JsonUtility.
+    Regenerated on every generate.py run so it never drifts from manifest.yaml."""
+    export = {"assets": manifest["assets"], "outputRoot": manifest["output_root"]}
+    (ROOT / "manifest.export.json").write_text(json.dumps(export, indent=2), encoding="utf-8")
+
+
 def load_workflow(name: str) -> dict:
     return json.loads((WORKFLOWS_DIR / name).read_text(encoding="utf-8"))
 
@@ -148,7 +157,15 @@ def generate_still(client: ComfyClient, manifest: dict, asset: dict, prompt_over
     patchmap = load_patchmap(workflow_name)
     models = manifest["models"]
     templates = manifest["prompt_templates"]
-    suffix = templates["environment_suffix"] if asset["type"] == "background" else templates["character_suffix"]
+    if asset["type"] == "background":
+        suffix = templates["environment_suffix"]
+    elif asset["type"] == "sprite":
+        # "plain solid color background" alone isn't enough -- Krea2 was observed
+        # rendering a neutral studio-brown backdrop instead of anything keyable.
+        # Sprites specifically need an explicit, named key color.
+        suffix = f"{templates['character_suffix']}, {templates['sprite_chroma_suffix']}"
+    else:
+        suffix = templates["character_suffix"]
     full_prompt = f"{prompt_override or asset['prompt']}, {suffix}"
 
     values = {
@@ -280,7 +297,7 @@ def process_asset(client: ComfyClient, manifest: dict, asset: dict) -> None:
         raw = generate_still(client, manifest, asset)
         postprocess.process_sprite(
             raw, dst, asset["final_width"], asset["final_height"],
-            manifest["chroma_key"], manifest["chroma_tolerance"],
+            manifest["chroma_key"], manifest["sprite_chroma_tolerance"],
         )
     elif asset_type == "portrait":
         raw = generate_still(client, manifest, asset)
@@ -311,6 +328,7 @@ def main() -> None:
     args = parser.parse_args()
 
     manifest = load_manifest()
+    export_manifest_json(manifest)
     assets = manifest["assets"]
     if args.only:
         assets = [a for a in assets if a["id"] == args.only]

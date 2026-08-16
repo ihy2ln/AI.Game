@@ -33,12 +33,33 @@ def key_to_alpha(img: Image.Image, key_hex: str, tolerance: int) -> Image.Image:
     Same technique as the video chroma-key shader, applied to a still image, so we
     don't need an ML background-removal dependency for solid-background AI output."""
     img = img.convert("RGB")
-    arr = np.asarray(img).astype(np.int16)
-    key = np.array(hex_to_rgb(key_hex), dtype=np.int16)
+    # float32, not int16 -- squared per-channel diffs run up to 255**2=65025 each,
+    # which overflows int16 (max 32767) and wraps, producing garbage distances (this
+    # was silently happening: numpy warns "invalid value encountered in sqrt" from the
+    # resulting negative values rather than raising, easy to miss).
+    arr = np.asarray(img).astype(np.float32)
+    key = np.array(hex_to_rgb(key_hex), dtype=np.float32)
     dist = np.sqrt(((arr - key) ** 2).sum(axis=-1))
     alpha = np.where(dist <= tolerance, 0, 255).astype(np.uint8)
     rgba = np.dstack([np.asarray(img), alpha])
     return Image.fromarray(rgba, mode="RGBA")
+
+
+def sample_background_key(img: Image.Image, margin: int = 6) -> str:
+    """Average the four corner blocks and return them as a hex color. A fixed
+    '#00FF00' key was observed to under-key sprite backgrounds in practice --
+    Krea2's "green screen" render isn't flat, it has a lighting gradient/vignette
+    that puts most of the frame well outside any reasonable fixed-key tolerance.
+    Sampling per-image is what actually gets clean transparency out of this model."""
+    arr = np.asarray(img.convert("RGB"))
+    h, w = arr.shape[:2]
+    m = min(margin, h // 2, w // 2)
+    corners = np.concatenate([
+        arr[0:m, 0:m].reshape(-1, 3), arr[0:m, w - m:w].reshape(-1, 3),
+        arr[h - m:h, 0:m].reshape(-1, 3), arr[h - m:h, w - m:w].reshape(-1, 3),
+    ])
+    r, g, b = corners.mean(axis=0)
+    return "#%02X%02X%02X" % (int(r), int(g), int(b))
 
 
 def downsample_nearest(img: Image.Image, w: int, h: int) -> Image.Image:
@@ -73,8 +94,12 @@ def process_sprite(
     tolerance: int,
     palette_colors: int = 48,
 ) -> None:
+    """chroma_key is a fallback; the actual key used is sampled from this specific
+    image's own corners (see sample_background_key) since a project-wide fixed key
+    doesn't survive per-generation lighting variance."""
     img = Image.open(src_path)
-    img = key_to_alpha(img, chroma_key, tolerance)
+    sampled_key = sample_background_key(img)
+    img = key_to_alpha(img, sampled_key, tolerance)
     img = downsample_nearest(img, final_w, final_h)
     img = quantize_palette(img, palette_colors)
     dst_path.parent.mkdir(parents=True, exist_ok=True)
