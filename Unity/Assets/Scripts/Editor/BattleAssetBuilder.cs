@@ -41,6 +41,7 @@ namespace Game.EditorTools
             var spritesByUnit = GetOrEmpty(byType, "sprite").ToDictionary(a => a.unit_id);
             var portraitsByUnit = GetOrEmpty(byType, "portrait").ToDictionary(a => a.unit_id);
             var clipsById = GetOrEmpty(byType, "clip").ToDictionary(a => a.id);
+            var backgroundAsset = GetOrEmpty(byType, "background").FirstOrDefault();
 
             Directory.CreateDirectory(OutDir + "/Tiers");
             Directory.CreateDirectory(OutDir + "/Patterns");
@@ -51,6 +52,10 @@ namespace Game.EditorTools
 
             var tier = BuildTier();
 
+            // Side-view (Darkest Dungeon / Slay the Spire style) formation, not the isometric
+            // lane grid FOUNDATION.md originally specified -- see PROJECT-README.md pivot note.
+            // Single lane; column IS the horizontal rank. Player ranks 0(back)-2(front),
+            // enemy ranks 3(front)-5(back), so the two melee units land adjacent (2 vs 3).
             var archetypes = new[]
             {
                 new ArchetypeSpec("Melee", "clip_melee_basic", ClassType.Warrior, isRanged: false, usesMagic: false,
@@ -58,7 +63,8 @@ namespace Game.EditorTools
                 new ArchetypeSpec("Ranged", "clip_ranged_basic", ClassType.Ranger, isRanged: true, usesMagic: false,
                     power: 1.0f, rangeOffsets: Enumerable.Range(1, 5).Select(c => new Vector2Int(0, c)).ToList()),
                 new ArchetypeSpec("Support", "clip_heal_basic", ClassType.Healer, isRanged: false, usesMagic: true,
-                    power: 1.0f, rangeOffsets: new() { new Vector2Int(0, 0), new Vector2Int(0, -1), new Vector2Int(0, -2) }),
+                    power: 1.0f, targetsAllies: true,
+                    rangeOffsets: new() { new Vector2Int(0, -1), new Vector2Int(0, 0), new Vector2Int(0, 1) }),
             };
 
             var skillByArchetype = new Dictionary<string, SkillDefinition>();
@@ -94,7 +100,7 @@ namespace Game.EditorTools
                 characterDefs[unitId] = charDef;
             }
 
-            BuildMap(characterDefs, tier);
+            BuildMap(characterDefs, tier, LoadSprite(backgroundAsset, unityRelRoot));
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -170,6 +176,7 @@ namespace Game.EditorTools
             skill.power = arch.Power;
             skill.usesMagic = arch.UsesMagic;
             skill.isRanged = arch.IsRanged;
+            skill.targetsAllies = arch.TargetsAllies;
             skill.clipKey = "basicAttack"; // matches the ClipEntry.key built in BuildClipSet
             EditorUtility.SetDirty(skill);
             return skill;
@@ -219,28 +226,31 @@ namespace Game.EditorTools
             return def;
         }
 
-        static void BuildMap(Dictionary<string, CharacterDefinition> characterDefs, TierDefinition tier)
+        static void BuildMap(Dictionary<string, CharacterDefinition> characterDefs, TierDefinition tier, Sprite backgroundSprite)
         {
-            const int lanes = 3, cols = 6;
-            var map = LoadOrCreate<MapDefinition>($"{OutDir}/Maps/Map_BattleSlice3x3.asset");
+            // Side-view formation: a single lane, column = horizontal rank (see archetypes
+            // comment above). Player ranks 0(back)-2(front); enemy ranks 3(front)-5(back) --
+            // the two front-liners land adjacent (2 vs 3) so melee's 1-column range meets.
+            const int lanes = 1, cols = 6;
+            var map = LoadOrCreate<MapDefinition>($"{OutDir}/Maps/Map_BattleSlice1v1Formation.asset");
             map.laneCount = lanes;
             map.columnCount = cols;
+            map.backgroundSprite = backgroundSprite;
 
             map.tiles = new List<TileData>(lanes * cols);
             for (int i = 0; i < lanes * cols; i++)
                 map.tiles.Add(new TileData { height = 0, terrain = TerrainType.Plain, blocked = false });
 
-            map.playerDeployTiles = new List<Vector2Int>();
-            for (int lane = 0; lane < lanes; lane++)
-                for (int col = 0; col < 3; col++)
-                    map.playerDeployTiles.Add(new Vector2Int(lane, col));
+            map.playerDeployTiles = new List<Vector2Int>
+            {
+                new(0, 0), new(0, 1), new(0, 2),
+            };
 
-            // One enemy per lane, columns chosen by archetype role (melee at the front, ranged/support held back).
             map.enemies = new List<EnemyPlacement>
             {
                 new() { character = characterDefs["enemy_melee"], tier = tier, position = new Vector2Int(0, 3), level = 1 },
-                new() { character = characterDefs["enemy_support"], tier = tier, position = new Vector2Int(1, 4), level = 1 },
-                new() { character = characterDefs["enemy_ranged"], tier = tier, position = new Vector2Int(2, 5), level = 1 },
+                new() { character = characterDefs["enemy_support"], tier = tier, position = new Vector2Int(0, 4), level = 1 },
+                new() { character = characterDefs["enemy_ranged"], tier = tier, position = new Vector2Int(0, 5), level = 1 },
             };
 
             EditorUtility.SetDirty(map);
@@ -275,18 +285,20 @@ namespace Game.EditorTools
             public readonly ClassType ClassType;
             public readonly bool IsRanged;
             public readonly bool UsesMagic;
+            public readonly bool TargetsAllies;
             public readonly float Power;
             public readonly List<Vector2Int> RangeOffsets;
             public readonly StatBlock BaseStats;
 
             public ArchetypeSpec(string name, string clipAssetId, ClassType classType, bool isRanged, bool usesMagic,
-                float power, List<Vector2Int> rangeOffsets)
+                float power, List<Vector2Int> rangeOffsets, bool targetsAllies = false)
             {
                 Name = name;
                 ClipAssetId = clipAssetId;
                 ClassType = classType;
                 IsRanged = isRanged;
                 UsesMagic = usesMagic;
+                TargetsAllies = targetsAllies;
                 Power = power;
                 RangeOffsets = rangeOffsets;
                 BaseStats = name switch

@@ -19,6 +19,9 @@ namespace Game.Data
         [Min(1)] public int laneCount = 3;
         [Min(1)] public int columnCount = 8;
 
+        [Header("Presentation")]
+        public Sprite backgroundSprite;
+
         [Tooltip("Row-major: index = lane * columnCount + column.")]
         public List<TileData> tiles = new();
 

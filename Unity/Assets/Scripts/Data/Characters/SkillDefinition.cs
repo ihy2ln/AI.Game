@@ -39,6 +39,9 @@ namespace Game.Data
         [Tooltip("Ranged skills gain the downward bonus. Melee skills take the upward penalty.")]
         public bool isRanged;
 
+        [Tooltip("True for heals/buffs: TargetResolver offers the caster's own faction instead of the opposing one.")]
+        public bool targetsAllies;
+
         [Header("Presentation")]
         [Tooltip("Key into the character's ClipSet.")]
         public string clipKey;

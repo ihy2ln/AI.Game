@@ -4,15 +4,27 @@ Tracks the `feature/battle-slice` branch. Task brief:
 `S:\AI\Game\Foundation\CLAUDE-CODE-PROMPT-Battle-Vertical-Slice.md`. Full design:
 `S:\AI\Game\FOUNDATION.md`.
 
-**Combat model:** lane/column tactics grid from FOUNDATION.md §1 (movement, height, jump
-all as designed there) — **not** Darkest Dungeon rank-formation combat. "Darkest Dungeon"
-in the brief refers only to camera framing: fixed, non-rotating, static angle, no free
-3D rotation. Presentation for this slice is the Brown Dust 2–style unified battlefield
-view (units on the grid, FMV plays in place) per FOUNDATION.md §2.2.
+**Combat model — PIVOTED as of M3.** The original plan (below, kept for history) assumed
+an isometric lane/column tactics grid. After seeing the actual scene, the project owner
+asked for a genuine **Darkest Dungeon / Slay the Spire / Chaos Zero Nightmare style side
+view**: a static 2D screen, player party lined up on the left, enemies on the right, no
+isometric camera. This is implemented as a **single-lane** `MapDefinition`
+(`laneCount = 1`, `columnCount = 6`) — column *is* the horizontal rank, so almost none of
+the underlying data layer changed. Player ranks are columns 0(back)–2(front), enemy ranks
+are 3(front)–6(back), so the two melee front-liners land adjacent (2 vs 3) and a
+1-column melee range just works. Movement/repositioning is out of scope for this slice
+(units hold their rank for the whole battle), matching the original brief's explicit
+"push/pull repositioning" exclusion.
+~~lane/column tactics grid from FOUNDATION.md §1 (movement, height, jump all as designed
+there) — not Darkest Dungeon rank-formation combat. Presentation is the Brown Dust
+2–style unified battlefield view (units on the grid, FMV plays in place) per
+FOUNDATION.md §2.2.~~
 
 **Art pipeline:** pixel sprites + chroma-keyed FMV clips (FOUNDATION.md §3), generated via
-local ComfyUI (Krea2 for stills, Minimax H3 for clips). Asset Forge (low-poly 3D) is
-deferred — not used in this slice.
+local ComfyUI (Krea2 for stills, Minimax H3 for clips). Asset Forge (a separate,
+custom-built local tool at `S:\AI\Game Engine\assetforge` — not the Unity Asset Store
+voxel tool originally assumed) is available and was surveyed but not used for this
+slice's assets; all 17 assets came from the `Tools/ComfyUI/` pipeline built in M1/M2.
 
 ## Milestones
 
@@ -21,16 +33,17 @@ deferred — not used in this slice.
 | M0 | Branch, `.gitignore`, folder scaffold, docs stub | `v0.4.0-m0-scaffold` | Done |
 | M1 | ComfyUI pipeline (workflows, manifest, generate.py, postprocess.py) | `v0.4.0-m1-comfyui-pipeline` | Done |
 | M2 | Generated assets + import automation + ScriptableObject build | `v0.4.0-m2-assets` | Done |
-| M3 | Battle logic (grid, turns, targeting, damage) + tests, placeholder art | `v0.4.0-m3-battle-logic` | Not started |
+| M3 | Battle logic (grid, turns, targeting, damage) + tests, side-view scene | `v0.4.0-m3-battle-logic` | Done |
 | M4 | Visuals: sprites, background, chroma-key FMV, HUD, damage numbers | `v0.4.0-m4-visuals` | Not started |
 | M5 | Android build + on-device verification | `v0.4.0-m5-android-apk` | Not started |
 
 ## Known environment gaps
 
-- **No local Unity Editor install found** at the path the brief expects
-  (`S:\AI\Unity\UnityEditors\Editor\6000.5.7f1`). Code will be written against Unity
-  6000.5.7f1 APIs but cannot be compiled/verified in-editor by the assistant until this is
-  resolved. Affects M2 (import verification), M4 (Play Mode check), M5 (build).
+- **Unity Editor found** at `S:\AI\Game Engine\Unity\UnityEditors\Editor\6000.5.7f1\Editor\Unity.exe`
+  (not `S:\AI\Unity\...` as `Unity/OpenUnity.bat` assumed -- fixed). The project owner
+  has it open interactively; M3's code is therefore verified by them pressing Play in
+  their own session rather than by the assistant running batchmode Unity (which would
+  conflict with their open Editor holding the project lock).
 - **No `adb` on PATH** — on-device install/verification (M5) will need to be done manually
   or from a machine that has the Android platform tools.
 - **ComfyUI confirmed reachable** at `127.0.0.1:8188` (v0.33.0).
@@ -66,7 +79,25 @@ deferred — not used in this slice.
   API compatibility level) -- but treat as unverified until an Editor actually opens
   this project and runs the menu item.
 
+- **M3 (side-view battle, auto-battle vertical slice):** `Battle/` scripts --
+  `BattleWorld` (rolls the 6 units from the M2 ScriptableObjects), `TurnOrder`
+  (speed-sorted, re-sorted per round), `TargetResolver` + `DamageCalculator` (pure C#,
+  covered by EditMode tests), `BattleController` (auto-battle loop: both sides act
+  automatically each turn, matching the BD2/gacha-style "auto battle" convention rather
+  than building manual touch-targeting in this pass), `BattleVisuals` (real generated
+  sprites + background, side-view layout), `BattleHud` (IMGUI HP bars, damage numbers,
+  win/lose banner, restart). `AI.Game -> Battle -> Create Battle Scene` builds
+  `Assets/Scenes/Battle.unity` (also runs the M2 asset builder first for convenience).
+  EditMode tests (`Unity/Assets/Tests/`) cover melee range, ranged distance scaling,
+  damage floor, ally-targeting for heals, and facing-mirrored range -- added
+  `com.unity.test-framework` to `Packages/manifest.json` and a `Game.Tests.asmdef`.
+- **Unverified like M2's editor code** -- same reason (no batchmode run possible while
+  the project owner has the Editor open). Written carefully but needs an actual Play
+  Mode run to confirm.
+
 ## Next up
 
-M3: headless battle logic (grid, turn order, targeting, damage) with EditMode tests,
-placeholder-art-only battle scene.
+M4/polish: manual unit-and-target selection (currently auto-battle only), wire the
+FMV clips into `BattleVisuals` (currently pixel sprites only, clips exist but aren't
+played back yet), tune the placeholder damage/heal numbers once the auto-battle is
+confirmed working.
