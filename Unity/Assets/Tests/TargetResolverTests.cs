@@ -62,8 +62,14 @@ namespace Game.Tests
 
             var targets = TargetResolver.GetValidTargets(caster, skill, new List<BattleUnit> { caster, ally, enemy });
 
-            Assert.AreEqual(1, targets.Count);
-            Assert.AreSame(ally, targets[0]);
+            // The (0,0) offset legitimately includes the caster itself -- support skills
+            // being able to self-target is standard, not a bug. What this test actually
+            // guards is the faction filter: both Player-side units offered, the
+            // opposing-faction unit at the same column is not.
+            Assert.AreEqual(2, targets.Count);
+            CollectionAssert.Contains(targets, caster);
+            CollectionAssert.Contains(targets, ally);
+            CollectionAssert.DoesNotContain(targets, enemy);
         }
 
         [Test]

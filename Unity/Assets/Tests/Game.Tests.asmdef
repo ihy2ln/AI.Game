@@ -3,7 +3,8 @@
     "references": [
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
-        "Assembly-CSharp"
+        "Game.Data",
+        "Game.Battle"
     ],
     "includePlatforms": [
         "Editor"
