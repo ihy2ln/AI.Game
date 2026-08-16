@@ -18,11 +18,12 @@ manual/turn-based mode (press `T`), HP bars, hit VFX, win/lose. Runs in-editor
 APK (build succeeds; **not verified on a physical device** — no adb on this machine).
 All 5 milestones below are done and pushed to GitHub.
 
-M6/M7 (this session) layer a reviewable **turn log** (`L` to open) and a genuine
-**three-panel presentation** on top of that: allies dock left, enemies dock right, and
-the acting unit + its target now tween into the empty centre "stage" to perform each
-turn's action before returning to their dock — see "What changed" below and
-[[Battle-System]].
+M6-M8 (this session) layer a reviewable **turn log** (`L`), a genuine **three-panel
+presentation** (allies dock left, enemies dock right, the acting unit + its target
+tween into the empty centre "stage" for each turn's action), and modern-RPG UX: pause
+(`Esc`), a settings panel (battle speed, damage-number/log/auto-mode toggles, volume),
+and a full multi-step **undo/redo** stack (`Ctrl+Z`/`Ctrl+Y`) alongside the existing
+full-battle restart — see "What changed" below and [[Battle-System]].
 
 ## What changed from the original design
 
@@ -61,6 +62,13 @@ turn's action before returning to their dock — see "What changed" below and
    back to their dock — so combat logic still only ever reasons about "who acts on
    whom" via `Column`, and the visual staging is a presentation-only concern layered
    on top.
+5. **Pause/settings/undo-redo — M8.** `BattleController` now owns `BattleHistory`
+   (snapshots unit HP/MP + the full turn log once per consumed turn, whether it
+   resolved or was skipped) and drives pause/speed entirely through `Time.timeScale`
+   (every wait in the turn loop and in `BattleVisuals`' stage tweens already runs
+   through `WaitForSeconds`/`Time.deltaTime`, so this is a two-line change, not a new
+   timing system). `BattleSettings` persists via `PlayerPrefs` — first use of it in
+   the project.
 
 ## Roster
 
@@ -85,6 +93,7 @@ turn's action before returning to their dock — see "What changed" below and
 | M5 | Android build (APK builds; on-device unverified) | *(not yet tagged — see below)* |
 | M6 | Turn log (`BattleLog`, scrollable review panel, `L` to open) | *(not yet tagged)* |
 | M7 | Three-panel layout: docked ally/enemy rosters + centre-stage cinematic action | *(not yet tagged)* |
+| M8 | Pause, settings, multi-step undo/redo, dock-spacing bugfix | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -95,8 +104,9 @@ precedent: commit + docs update, no snapshot/zip.
 
 ## Controls
 
-`T` toggle auto/manual mode · `L` open/close the turn log · click a highlighted target
-in manual mode.
+`T` toggle auto/manual mode · `L` open/close the turn log · `Esc` pause ·
+`Ctrl+Z`/`Ctrl+Y` undo/redo last turn · `R` restart after the battle ends · `?` keybind
+legend · click a highlighted target in manual mode.
 
 ## How to run it
 
@@ -117,10 +127,14 @@ in manual mode.
   "S:\AI\Game Engine\Unity\UnityEditors\Editor\6000.5.7f1\Editor\Unity.exe" -batchmode -quit -nographics -projectPath "S:\AI\Game\AI.Game\Unity" -executeMethod Game.EditorTools.BuildBattleStandalone.Build -logFile "S:\AI\Game\AI.Game\Unity\batchmode-build.log"
   ```
   and for tests: same but `-runTests -testPlatform EditMode -testResults <path>.xml`
-  instead of `-executeMethod`. To actually *see* the standalone build running, launch
-  the exe then screenshot its window via `PrintWindow` (Win32 API through
-  PowerShell) rather than a plain screen capture — the exe isn't a "known installed
-  app" so the usual computer-use tools can't target it by name.
+  instead of `-executeMethod` -- **drop `-quit` for the test invocation**, confirmed
+  this session: with `-quit` present Unity finishes the asset refresh and exits
+  before the test runner ever starts (no `test-results.xml` is written, exit code 0,
+  looks like success but nothing ran); the test runner quits the process itself once
+  done. To actually *see* the standalone build running, launch the exe then
+  screenshot its window via `PrintWindow` (Win32 API through PowerShell) rather than
+  a plain screen capture — the exe isn't a "known installed app" so the usual
+  computer-use tools can't target it by name.
 
 ## Known gaps
 
@@ -134,11 +148,26 @@ in manual mode.
   https://github.com/ihy2ln/AI.Game/wiki has its first page created (one click, "Create
   the first page", any content). Then: `cd "S:\AI\Game\AI.Game.wiki" && git push -u
   origin master`.
-- **Manual mode's click-to-target is code-complete and mirrors the already-tested
-  auto path, but hasn't been screenshot-verified interactively** — the dev build
-  window was closed mid-test by the project owner. Quick thing to check next session:
-  launch the standalone build, press T, click a highlighted target, confirm it
-  resolves.
+- **Manual mode's click-to-target, and all of M8's new buttons (pause, settings,
+  undo/redo, log toggle), are code-complete but still haven't been interactively
+  click-tested** — same root cause both times: the standalone exe isn't a "known
+  installed app," so the usual computer-use tools can't target it, and this session
+  additionally found that synthetic input (`SendKeys`, and hardware-level `SendInput`
+  with an `AttachThreadInput` focus-steal) doesn't reliably reach the game window
+  either -- `GetForegroundWindow` confirmed the click's target window never actually
+  changed away from the calling process, so clicks landed on the desktop, not the
+  game. Auto mode itself *was* verified thoroughly this way (screenshotted across many
+  real turns: hits, heals, a skip-turn on "no valid target", a unit death, HP bars and
+  the turn-log toast all updating correctly, and the M7 dock-overlap bug below was
+  *found* this way) — only mouse/keyboard-driven interaction is unverified. Needs
+  either a physical click, or a working `adb`/on-device input path, or a proper
+  fullscreen/exclusive relaunch that a background process is actually allowed to
+  foreground.
+- **M7's first-pass dock spacing overlapped units** (`DockColumnSpacing` cut to 1.9 to
+  make room for the new centre stage, well under the 3.6 the original single-line
+  layout's own comment says is required) — Husk and Stinger visibly collided on the
+  enemy dock. Fixed in M8 by restoring 3.6 and widening the camera instead of
+  shrinking spacing; worth remembering if the layout constants get touched again.
 - **FMV clip playback is not wired in.** `Tools/ComfyUI/` generated 3 real h264 clips
   in M1/M2 and `ClipEntry`/`ClipSet` exist on `CharacterDefinition`, but
   `BattleVisuals` only ever rendered static sprites — no `VideoPlayer`, no chroma-key
@@ -152,7 +181,10 @@ in manual mode.
 
 ## Natural next steps, roughly in priority order
 
-1. Verify manual mode interactively (see "Known gaps").
+1. Interactively click-test manual mode and the M8 buttons (pause/settings/undo/redo/
+   log) from a real input device or a session with a working on-window input path
+   (see "Known gaps") -- logic is unit-tested and auto mode is visually verified, but
+   nothing mouse/keyboard-driven has been.
 2. Wire FMV clips into `BattleVisuals` (chroma-key shader + `VideoPlayer`, sync to
    `ClipEntry.impactFrames`) — closes out the original three-layer renderer design.
 3. Get the wiki unblocked (needs the project owner's one click, or a working Claude
