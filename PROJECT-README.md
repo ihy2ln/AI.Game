@@ -1,140 +1,142 @@
 # Battle Vertical Slice — status
 
-Tracks the `feature/battle-slice` branch. Task brief:
-`S:\AI\Game\Foundation\CLAUDE-CODE-PROMPT-Battle-Vertical-Slice.md`. Full design:
-`S:\AI\Game\FOUNDATION.md`.
+**Read this first if picking up a fresh session.** Tracks the `feature/battle-slice`
+branch (not merged to `main` yet). Original task brief:
+`S:\AI\Game\Foundation\CLAUDE-CODE-PROMPT-Battle-Vertical-Slice.md`. Original full
+design: `S:\AI\Game\FOUNDATION.md`. **Both are stale on combat model/camera/art
+pipeline** — see "What changed from the original design" below before trusting
+anything they say about the battle system specifically. Wiki (if reachable — see
+"Known gaps"): https://github.com/ihy2ln/AI.Game/wiki, pages: Home, Battle-System,
+Art-Pipeline, Roadmap. Same content as this file, more browsable.
 
-**Combat model — PIVOTED as of M3.** The original plan (below, kept for history) assumed
-an isometric lane/column tactics grid. After seeing the actual scene, the project owner
-asked for a genuine **Darkest Dungeon / Slay the Spire / Chaos Zero Nightmare style side
-view**: a static 2D screen, player party lined up on the left, enemies on the right, no
-isometric camera. This is implemented as a **single-lane** `MapDefinition`
-(`laneCount = 1`, `columnCount = 6`) — column *is* the horizontal rank, so almost none of
-the underlying data layer changed. Player ranks are columns 0(back)–2(front), enemy ranks
-are 3(front)–6(back), so the two melee front-liners land adjacent (2 vs 3) and a
-1-column melee range just works. Movement/repositioning is out of scope for this slice
-(units hold their rank for the whole battle), matching the original brief's explicit
-"push/pull repositioning" exclusion.
-~~lane/column tactics grid from FOUNDATION.md §1 (movement, height, jump all as designed
-there) — not Darkest Dungeon rank-formation combat. Presentation is the Brown Dust
-2–style unified battlefield view (units on the grid, FMV plays in place) per
-FOUNDATION.md §2.2.~~
+## TL;DR current state
 
-**Art pipeline:** pixel sprites + chroma-keyed FMV clips (FOUNDATION.md §3), generated via
-local ComfyUI (Krea2 for stills, Minimax H3 for clips). Asset Forge (a separate,
-custom-built local tool at `S:\AI\Game Engine\assetforge` — not the Unity Asset Store
-voxel tool originally assumed) is available and was surveyed but not used for this
-slice's assets; all 17 assets came from the `Tools/ComfyUI/` pipeline built in M1/M2.
+A playable, real-art, side-view party battle exists and is verified working:
+6 named characters (Kestrel/Sable/Linnet vs Husk/Warden/Stinger), auto-battle and a
+manual/turn-based mode (press `T`), HP bars, hit VFX, win/lose. Runs in-editor
+(`Assets/Scenes/Battle.unity`), as a Windows standalone dev build, and as an Android
+APK (build succeeds; **not verified on a physical device** — no adb on this machine).
+All 5 milestones below are done and pushed to GitHub.
 
-## Milestones
+## What changed from the original design
 
-| # | Milestone | Tag | Status |
+1. **Combat model/camera — pivoted at M3.** FOUNDATION.md specifies an isometric
+   lane/column tactics grid. After seeing the running scene, the project owner asked
+   for a genuine **Darkest Dungeon / Slay the Spire / Chaos Zero Nightmare style side
+   view**: static 2D, player party left, enemies right, no isometric camera, no free
+   repositioning. Implemented as a **single-lane** `MapDefinition`
+   (`laneCount = 1`, `columnCount = 6`) — column *is* the horizontal rank, so the
+   data layer barely changed. Player ranks = columns 0(back)–2(front); enemy ranks =
+   3(front)–5(back); the two melee front-liners land adjacent (2 vs 3). No
+   movement/repositioning in this slice (matches the original brief's "push/pull"
+   exclusion).
+2. **Roster art — pivoted at M4.** The original brief's own ComfyUI pixel-art
+   pipeline (`Tools/ComfyUI/`) had real quality problems (weak chroma-key on one
+   character, feet cropped by generation framing). The project owner pointed at a
+   **separate pre-existing curated asset library**
+   (`S:\AI\ComfyUI_windows_portable\ComfyUI\output\aigame\charcter`) with six named
+   characters that happened to map exactly onto the 6-archetype roster. **Do not
+   regenerate assets** — the project owner was explicit about this. If more/different
+   character art is ever needed, check that library first.
+3. **Asset Forge** (`S:\AI\Game Engine\assetforge`, a separate custom-built local
+   tool, FastAPI+React on port 8420) is **not** the Unity Asset Store voxel tool
+   originally assumed. It's an asset library/editor app. Not used to build the game's
+   logic (that's all hand-written C# in this repo) — used only to register the
+   processed roster assets for the project owner to browse/re-edit later. If asked to
+   "use AssetForge to build the game," the judgment call made this session was: keep
+   the proven, tested C# pipeline (`BattleAssetBuilder.cs` etc.) as the actual game
+   logic, and use AssetForge only where it's genuinely a better fit (asset
+   library/editing) — revisit this if the project owner wants something more drastic.
+
+## Roster
+
+| Unit | Role | Faction | Skill pattern |
 |---|---|---|---|
-| M0 | Branch, `.gitignore`, folder scaffold, docs stub | `v0.4.0-m0-scaffold` | Done |
-| M1 | ComfyUI pipeline (workflows, manifest, generate.py, postprocess.py) | `v0.4.0-m1-comfyui-pipeline` | Done |
-| M2 | Generated assets + import automation + ScriptableObject build | `v0.4.0-m2-assets` | Done |
-| M3 | Battle logic (grid, turns, targeting, damage) + tests, side-view scene | `v0.4.0-m3-battle-logic` | Done |
-| M4 | HD roster art, hit FX, manual/turn-based mode | `v0.4.0-m4-roster-and-manual-mode` | Done |
-| M5 | Android build + on-device verification | `v0.4.0-m5-android-apk` | Not started |
+| **Kestrel** | Melee (dual katana) | Player | 1 column away only |
+| **Sable** | Ranged (sniper) | Player | any column, damage scales up with distance |
+| **Linnet** | Support (lantern-healer) | Player | heals own faction, ±1 column + self |
+| **Husk** | Melee (armored knight) | Enemy | 1 column away only |
+| **Warden** | Ranged (dark caster) | Enemy | any column |
+| **Stinger** | Support (insect monster) | Enemy | heals own faction |
 
-## Known environment gaps
+## Milestones — all done
 
-- **Unity Editor found** at `S:\AI\Game Engine\Unity\UnityEditors\Editor\6000.5.7f1\Editor\Unity.exe`
-  (not `S:\AI\Unity\...` as `Unity/OpenUnity.bat` assumed -- fixed). The project owner
-  has it open interactively; M3's code is therefore verified by them pressing Play in
-  their own session rather than by the assistant running batchmode Unity (which would
-  conflict with their open Editor holding the project lock).
-- **No `adb` on PATH** — on-device install/verification (M5) will need to be done manually
-  or from a machine that has the Android platform tools.
-- **ComfyUI confirmed reachable** at `127.0.0.1:8188` (v0.33.0).
+| # | Milestone | Tag |
+|---|---|---|
+| M0 | Branch, `.gitignore`, folder scaffold, docs stub | `v0.4.0-m0-scaffold` |
+| M1 | ComfyUI pipeline (workflows, manifest, generate.py, postprocess.py) | `v0.4.0-m1-comfyui-pipeline` |
+| M2 | Generated assets + import automation + ScriptableObject build | `v0.4.0-m2-assets` |
+| M3 | Side-view battle logic, scene, EditMode tests | `v0.4.0-m3-battle-logic` |
+| M4 | Curated HD roster art, hit FX, manual/turn-based mode | `v0.4.0-m4-roster-and-manual-mode` |
+| M5 | Android build (APK builds; on-device unverified) | *(not yet tagged — see below)* |
 
-## What works
+Each milestone's commit history has a `NOTES.md` snapshot under
+`AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`, per this
+repo's existing per-section convention. M4 skipped the snapshot/zip step (time
+pressure) — worth backfilling if a session has spare time.
 
-- ComfyUI asset generation pipeline: `Tools/ComfyUI/manifest.yaml` (17 assets),
-  `generate.py` (submit/poll/fetch, `--dry-run`, `--force`, `--only`), `postprocess.py`
-  (chroma-key transparency, palette quantization, video re-encode, FX sheet packing).
-- Four validated ComfyUI API-format workflows (`workflows/*.json` +
-  `*.patchmap.json`): Krea2 stills (sprites/portraits/backgrounds), MiniMax H3
-  reference-to-video clips, MiniMax H3 + chroma-key FX flipbook frames. See
-  `Tools/ComfyUI/README.md` "Workflow node graphs" for the real gotchas found (image
-  upload requirement, non-literal frame counts, per-effect chroma key color, etc.).
-- Smoke-tested end to end: `python generate.py --only bg_battle01` produced a real
-  1920x1080 battle background at `Unity/Assets/Art/Generated/backgrounds/bg_battle01.png`.
+## How to run it
 
-- All 17 battle-slice assets generated and verified: background (1920x1080),
-  6 pixel sprites (32x32, real transparency via per-image sampled chroma key --
-  fixed a fixed-key bug where Krea2's background gradient didn't survive a single
-  project-wide key color), 6 portraits (256x256), 3 attack clips (h264 mp4,
-  512x768@24fps, ~39 frames), 1 FX hit flipbook (8 frames, transparent, packed
-  sheet + rect JSON).
-- `GeneratedAssetImporter.cs` (AssetPostprocessor: point-filtered/uncompressed for
-  sprites+FX, bilinear/compressed for portraits/backgrounds) and
-  `BattleAssetBuilder.cs` (`AI.Game -> Battle -> Build Assets From Manifest` menu
-  item; builds ClipSet/SkillPattern/SkillDefinition/CharacterDefinition/MapDefinition
-  ScriptableObjects into `Resources/Battle/` from `manifest.export.json`) are written
-  but **unverified** -- no local Unity Editor install exists to compile/run them
-  against (see "Known environment gaps" above). Written carefully against documented
-  Unity APIs and cross-checked against this project's own conventions (e.g. avoided
-  `Dictionary.GetValueOrDefault`, unavailable under this project's .NET Standard 2.0
-  API compatibility level) -- but treat as unverified until an Editor actually opens
-  this project and runs the menu item.
+- **In Editor:** open `Unity/Assets/Scenes/Battle.unity`, press Play. If the scene or
+  `Resources/Battle/*` assets don't exist yet, run
+  `AI.Game → Battle → Create Battle Scene` first (also rebuilds the data assets).
+- **Windows standalone:** `AI.Game → Battle → Build Windows Standalone (dev)` →
+  `Unity/Builds/BattleStandalone/AI.Game-Battle.exe`.
+- **Android APK:** `AI.Game → Battle → Build Android APK` →
+  `releases/AI.Game-Battle-v0.4.0-debug.apk` (24.8MB, IL2CPP, ARM64, min API 26,
+  package `com.aigame.aigame`). Built successfully this session but **never installed
+  on a device** — no adb here. Needs `adb install -r` + a manual play-through on
+  whatever machine/session has Android platform tools.
+- **Headless verification** (what this session actually used, since driving the
+  Editor GUI directly wasn't available): with Unity **closed** (batchmode can't run
+  alongside an open Editor on the same project — same lockfile),
+  ```
+  "S:\AI\Game Engine\Unity\UnityEditors\Editor\6000.5.7f1\Editor\Unity.exe" -batchmode -quit -nographics -projectPath "S:\AI\Game\AI.Game\Unity" -executeMethod Game.EditorTools.BuildBattleStandalone.Build -logFile "S:\AI\Game\AI.Game\Unity\batchmode-build.log"
+  ```
+  and for tests: same but `-runTests -testPlatform EditMode -testResults <path>.xml`
+  instead of `-executeMethod`. To actually *see* the standalone build running, launch
+  the exe then screenshot its window via `PrintWindow` (Win32 API through
+  PowerShell) rather than a plain screen capture — the exe isn't a "known installed
+  app" so the usual computer-use tools can't target it by name.
 
-- **M3 (side-view battle, auto-battle vertical slice):** `Battle/` scripts --
-  `BattleWorld` (rolls the 6 units from the M2 ScriptableObjects), `TurnOrder`
-  (speed-sorted, re-sorted per round), `TargetResolver` + `DamageCalculator` (pure C#,
-  covered by EditMode tests), `BattleController` (auto-battle loop: both sides act
-  automatically each turn, matching the BD2/gacha-style "auto battle" convention rather
-  than building manual touch-targeting in this pass), `BattleVisuals` (real generated
-  sprites + background, side-view layout), `BattleHud` (IMGUI HP bars, damage numbers,
-  win/lose banner, restart). `AI.Game -> Battle -> Create Battle Scene` builds
-  `Assets/Scenes/Battle.unity` (also runs the M2 asset builder first for convenience).
-  EditMode tests (`Unity/Assets/Tests/`) cover melee range, ranged distance scaling,
-  damage floor, ally-targeting for heals, and facing-mirrored range -- added
-  `com.unity.test-framework` to `Packages/manifest.json` and a `Game.Tests.asmdef`.
-- **Fully verified, including visually.** Batchmode caught and fixed a compile bug
-  (`Game.Tests.asmdef` -> proper `Game.Data`/`Game.Battle` asmdefs), 9/9 EditMode tests
-  pass. Beyond that: built a Windows standalone dev player
-  (`BuildBattleStandalone.cs`, `AI.Game > Battle > Build Windows Standalone (dev)`),
-  launched it, and captured real screenshots of it running. Found and fixed a real
-  layout bug this way that nothing else would have caught: `BattleLayout.UnitScale`
-  (3) exceeded `ColumnSpacing` (2.4), so units visually overlapped into one cluster
-  instead of forming the left/right formation -- fixed to `ColumnSpacing = 2.8`,
-  `UnitScale = 2`. Confirmed via screenshots: clean formation, varied targeting,
-  correct HP color thresholds, death handling, and a full VICTORY banner + Restart
-  button at the end of a real auto-battle.
-- **M2's known art-quality gaps are superseded, not fixed.** The old auto-generated
-  32px sprites (fringe on `enemy_support`, cropped feet) are still on disk as
-  `pixelSprite32` but the battle no longer renders them -- `BattleVisuals` prefers
-  `CharacterDefinition.battleSprite` now, which points at the M4 curated roster art
-  instead. `pixelSprite32` stays reserved for a future pixel/strategic view.
+## Known gaps
 
-## M4 — curated HD roster + manual mode (`v0.4.0-m4-roster-and-manual-mode`)
+- **No `adb` on this machine** — M5's on-device install/verification is genuinely
+  blocked here, not skipped out of laziness. Needs a different machine/session.
+- **GitHub wiki push still blocked** as of last check. GitHub only provisions a
+  repo's wiki git backend after a page is saved once through the web UI — there's no
+  API/git-push way around it. The 4 wiki pages (Home, Battle-System, Art-Pipeline,
+  Roadmap) are written and committed locally at `S:\AI\Game\AI.Game.wiki\` (a
+  separate git clone, not part of the main repo), ready to push the moment
+  https://github.com/ihy2ln/AI.Game/wiki has its first page created (one click, "Create
+  the first page", any content). Then: `cd "S:\AI\Game\AI.Game.wiki" && git push -u
+  origin master`.
+- **Manual mode's click-to-target is code-complete and mirrors the already-tested
+  auto path, but hasn't been screenshot-verified interactively** — the dev build
+  window was closed mid-test by the project owner. Quick thing to check next session:
+  launch the standalone build, press T, click a highlighted target, confirm it
+  resolves.
+- **FMV clip playback is not wired in.** `Tools/ComfyUI/` generated 3 real h264 clips
+  in M1/M2 and `ClipEntry`/`ClipSet` exist on `CharacterDefinition`, but
+  `BattleVisuals` only ever rendered static sprites — no `VideoPlayer`, no chroma-key
+  shader. This is real, uncompleted scope from the original brief's three-layer
+  renderer design, not something that was decided against.
+- **No fixed master palette** for the (now largely superseded) `Tools/ComfyUI/`
+  pixel-sprite pipeline — `postprocess.quantize_palette()` uses adaptive median-cut as
+  a placeholder. Low priority now that the roster uses curated HD art instead.
+- **M4 has no snapshot/zip** under `AI.Game Commits/battle-slice/` (see Milestones
+  table) — the commit/tag/push happened, just not the extra per-section copy step.
 
-- Real character identity: **Kestrel** (player melee, dual katana), **Sable** (player
-  ranged, sniper), **Linnet** (player support, lantern-healer), **Husk** (enemy melee,
-  armored knight), **Warden** (enemy ranged, dark caster), **Stinger** (enemy support,
-  insect monster) -- sourced from a pre-existing curated library at
-  `S:\AI\ComfyUI_windows_portable\ComfyUI\output\aigame\charcter`, not regenerated.
-  `Tools/AssetImport/import_roster.py` does border-seeded flood-fill background
-  removal + crop-to-content; re-run it if that source library changes.
-- Hit-impact flipbook re-sourced from the same library's `effect/` folder (31 real
-  frames vs. the old auto-generated 8) and wired into `BattleController` -- it now
-  actually plays on every hit, not just a red flash.
-- `BattleVisuals` normalizes unit size by world-space height instead of a flat scale
-  multiplier, so swapping in art with a different native resolution can't repeat the
-  M3 overlap bug.
-- **Manual/turn-based mode added** alongside auto-battle -- press `T` in-game to
-  toggle. Player turns pause and highlight valid targets (yellow ring); enemy turns
-  still resolve automatically. Click-to-target via screen-space sprite bounds, no
-  colliders needed.
-- Verified: clean batchmode compile, 9/9 EditMode tests, and a real screenshot of the
-  standalone build confirmed the new art/layout. Manual mode's code path mirrors the
-  already-tested auto path (same `ResolveAction`) but its interactive click-to-target
-  hasn't been screenshot-verified yet -- the dev build window was closed mid-test.
-  Worth a quick check next session.
+## Natural next steps, roughly in priority order
 
-## Next up
-
-M5: Android build. FMV clip playback into `BattleVisuals` (clips exist, chroma-key
-shader doesn't yet) is worth doing before considering the vertical slice's visual
-layer "complete" per the original brief's three-layer renderer design.
+1. Verify manual mode interactively (see "Known gaps").
+2. Wire FMV clips into `BattleVisuals` (chroma-key shader + `VideoPlayer`, sync to
+   `ClipEntry.impactFrames`) — closes out the original three-layer renderer design.
+3. Get the wiki unblocked (needs the project owner's one click, or a working Claude
+   in Chrome connection to do it directly).
+4. On-device Android verification, whenever a session has `adb` access.
+5. Beyond the vertical slice: the roster is currently 6 fixed archetypes with 1 skill
+   each and no save/persistence. FOUNDATION.md's broader systems (tier/fusion, gacha,
+   farm/town economy, multiple skills per unit) are designed but not connected to
+   this battle system yet — that's the actual "rest of the game," this slice only
+   proves the battle screen works.

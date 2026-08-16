@@ -29,6 +29,7 @@ Unity/Obj/
 Unity/Build/
 Unity/Builds/
 Unity/Builds/**
+Unity/.utmp/
 Unity/Logs/
 Unity/UserSettings/
 Unity/MemoryCaptures/
