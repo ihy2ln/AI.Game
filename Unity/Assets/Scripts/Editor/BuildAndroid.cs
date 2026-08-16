@@ -11,6 +11,10 @@ namespace Game.EditorTools
     /// convention. No adb on this dev machine, so this produces the APK but cannot
     /// install/verify on a physical device; that step needs to happen on a machine
     /// (or session) that has Android platform tools.
+    ///
+    /// Outputs to S:\AI\Game\play\android\ -- see BuildBattleStandalone's doc comment
+    /// for why "play" (ready-to-launch builds) is a sibling of "test" (this repo's new
+    /// home under S:\AI\Game\test\AI.Game), not a subfolder of it.
     /// </summary>
     public static class BuildAndroid
     {
@@ -34,7 +38,7 @@ namespace Game.EditorTools
             var options = new BuildPlayerOptions
             {
                 scenes = new[] { "Assets/Scenes/Battle.unity" },
-                locationPathName = "../releases/AI.Game-Battle-v0.4.0-debug.apk",
+                locationPathName = "S:/AI/Game/play/android/AI.Game-Battle-v0.4.0-debug.apk",
                 target = BuildTarget.Android,
                 options = BuildOptions.None,
             };

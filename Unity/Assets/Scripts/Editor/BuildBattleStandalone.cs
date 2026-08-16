@@ -9,6 +9,13 @@ namespace Game.EditorTools
     /// slice actually plays (there's no Android adb on this dev machine, and headless
     /// batchmode can compile/test logic but can't show what it looks like on screen).
     /// Not a shipping build config, just a fast local verification build.
+    ///
+    /// Outputs to S:\AI\Game\play\windows\, NOT into this repo -- "play" is a sibling of
+    /// "test" (this repo's new home under S:\AI\Game\test\AI.Game) so a from-source
+    /// build and a ready-to-launch build never live in the same tree. Absolute path is
+    /// deliberate; this project already pins several paths to this machine's layout
+    /// (the Unity Editor install, the curated art library) rather than pretending to be
+    /// portable across machines.
     /// </summary>
     public static class BuildBattleStandalone
     {
@@ -20,7 +27,7 @@ namespace Game.EditorTools
             var options = new BuildPlayerOptions
             {
                 scenes = new[] { "Assets/Scenes/Battle.unity" },
-                locationPathName = "Builds/BattleStandalone/AI.Game-Battle.exe",
+                locationPathName = "S:/AI/Game/play/windows/AI.Game-Battle.exe",
                 target = BuildTarget.StandaloneWindows64,
                 options = BuildOptions.None,
             };

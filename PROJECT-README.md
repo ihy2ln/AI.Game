@@ -1,6 +1,9 @@
 # Battle Vertical Slice — status
 
-**Read this first if picking up a fresh session.** Tracks the `feature/battle-slice`
+**Read this first if picking up a fresh session.** This repo lives at
+`S:\AI\Game\test\AI.Game` (moved here from `S:\AI\Game\AI.Game` for a folder cleanup —
+`S:\AI\Game\` is now `test\` for from-source projects/testing and `play\` for
+ready-to-launch builds; see "How to run it" below). Tracks the `feature/battle-slice`
 branch (not merged to `main` yet). Original task brief:
 `S:\AI\Game\Foundation\CLAUDE-CODE-PROMPT-Battle-Vertical-Slice.md`. Original full
 design: `S:\AI\Game\FOUNDATION.md`. **Both are stale on combat model/camera/art
@@ -114,17 +117,20 @@ legend · click a highlighted target in manual mode.
   `Resources/Battle/*` assets don't exist yet, run
   `AI.Game → Battle → Create Battle Scene` first (also rebuilds the data assets).
 - **Windows standalone:** `AI.Game → Battle → Build Windows Standalone (dev)` →
-  `Unity/Builds/BattleStandalone/AI.Game-Battle.exe`.
-- **Android APK:** `AI.Game → Battle → Build Android APK` →
-  `releases/AI.Game-Battle-v0.4.0-debug.apk` (24.8MB, IL2CPP, ARM64, min API 26,
-  package `com.aigame.aigame`). Built successfully this session but **never installed
-  on a device** — no adb here. Needs `adb install -r` + a manual play-through on
-  whatever machine/session has Android platform tools.
+  outputs straight to `S:\AI\Game\play\windows\AI.Game-Battle.exe` (**not** into this
+  repo — `play\` is the ready-to-launch sibling of `test\AI.Game\`, deliberately kept
+  separate so a from-source build and something you'd hand someone to just play never
+  live in the same tree; see `BuildBattleStandalone.cs`'s doc comment).
+- **Android APK:** `AI.Game → Battle → Build Android APK` → outputs to
+  `S:\AI\Game\play\android\AI.Game-Battle-v0.4.0-debug.apk` (24.8MB, IL2CPP, ARM64,
+  min API 26, package `com.aigame.aigame`). Built successfully this session but
+  **never installed on a device** — no adb here. Needs `adb install -r` + a manual
+  play-through on whatever machine/session has Android platform tools.
 - **Headless verification** (what this session actually used, since driving the
   Editor GUI directly wasn't available): with Unity **closed** (batchmode can't run
   alongside an open Editor on the same project — same lockfile),
   ```
-  "S:\AI\Game Engine\Unity\UnityEditors\Editor\6000.5.7f1\Editor\Unity.exe" -batchmode -quit -nographics -projectPath "S:\AI\Game\AI.Game\Unity" -executeMethod Game.EditorTools.BuildBattleStandalone.Build -logFile "S:\AI\Game\AI.Game\Unity\batchmode-build.log"
+  "S:\AI\Game Engine\Unity\UnityEditors\Editor\6000.5.7f1\Editor\Unity.exe" -batchmode -quit -nographics -projectPath "S:\AI\Game\test\AI.Game\Unity" -executeMethod Game.EditorTools.BuildBattleStandalone.Build -logFile "S:\AI\Game\test\AI.Game\Unity\batchmode-build.log"
   ```
   and for tests: same but `-runTests -testPlatform EditMode -testResults <path>.xml`
   instead of `-executeMethod` -- **drop `-quit` for the test invocation**, confirmed
@@ -138,6 +144,15 @@ legend · click a highlighted target in manual mode.
 
 ## Known gaps
 
+- **This repo moved from `S:\AI\Game\AI.Game` to `S:\AI\Game\test\AI.Game`** during a
+  folder cleanup (same session as M8). `S:\AI\Main Game\AI.Game` — a *different*
+  project, Asset Forge's own Unity import/validation sandbox, confusingly also named
+  `AI.Game` — moved to `S:\AI\Game\test\AssetForge-Sandbox` at the same time and
+  Asset Forge's `config.toml`/`config.py` were updated to match. `BuildBattleStandalone.cs`
+  and `BuildAndroid.cs` now output straight to `S:\AI\Game\play\windows\` /
+  `S:\AI\Game\play\android\` instead of into this repo (see "How to run it"). If any
+  tooling/scripts/notes still reference the old `S:\AI\Game\AI.Game` path, they're
+  stale — this file and the wiki are current as of the move.
 - **No `adb` on this machine** — M5's on-device install/verification is genuinely
   blocked here, not skipped out of laziness. Needs a different machine/session.
 - **GitHub wiki push still blocked** as of last check. GitHub only provisions a
