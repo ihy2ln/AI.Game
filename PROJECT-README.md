@@ -34,7 +34,7 @@ slice's assets; all 17 assets came from the `Tools/ComfyUI/` pipeline built in M
 | M1 | ComfyUI pipeline (workflows, manifest, generate.py, postprocess.py) | `v0.4.0-m1-comfyui-pipeline` | Done |
 | M2 | Generated assets + import automation + ScriptableObject build | `v0.4.0-m2-assets` | Done |
 | M3 | Battle logic (grid, turns, targeting, damage) + tests, side-view scene | `v0.4.0-m3-battle-logic` | Done |
-| M4 | Visuals: sprites, background, chroma-key FMV, HUD, damage numbers | `v0.4.0-m4-visuals` | Not started |
+| M4 | HD roster art, hit FX, manual/turn-based mode | `v0.4.0-m4-roster-and-manual-mode` | Done |
 | M5 | Android build + on-device verification | `v0.4.0-m5-android-apk` | Not started |
 
 ## Known environment gaps
@@ -102,15 +102,39 @@ slice's assets; all 17 assets came from the `Tools/ComfyUI/` pipeline built in M
   `UnitScale = 2`. Confirmed via screenshots: clean formation, varied targeting,
   correct HP color thresholds, death handling, and a full VICTORY banner + Restart
   button at the end of a real auto-battle.
-- **Known art-quality gaps** (not code bugs, not fixing without regenerating assets
-  per project owner's "no more asset generation" instruction): `enemy_support`'s
-  sprite still shows a visible chroma-key fringe (flagged in M2 notes); all six
-  sprites are cropped at the feet -- confirmed this is baked into the generated
-  32x32 art itself (checked the raw sprite pixels), not a camera/layout issue.
+- **M2's known art-quality gaps are superseded, not fixed.** The old auto-generated
+  32px sprites (fringe on `enemy_support`, cropped feet) are still on disk as
+  `pixelSprite32` but the battle no longer renders them -- `BattleVisuals` prefers
+  `CharacterDefinition.battleSprite` now, which points at the M4 curated roster art
+  instead. `pixelSprite32` stays reserved for a future pixel/strategic view.
+
+## M4 — curated HD roster + manual mode (`v0.4.0-m4-roster-and-manual-mode`)
+
+- Real character identity: **Kestrel** (player melee, dual katana), **Sable** (player
+  ranged, sniper), **Linnet** (player support, lantern-healer), **Husk** (enemy melee,
+  armored knight), **Warden** (enemy ranged, dark caster), **Stinger** (enemy support,
+  insect monster) -- sourced from a pre-existing curated library at
+  `S:\AI\ComfyUI_windows_portable\ComfyUI\output\aigame\charcter`, not regenerated.
+  `Tools/AssetImport/import_roster.py` does border-seeded flood-fill background
+  removal + crop-to-content; re-run it if that source library changes.
+- Hit-impact flipbook re-sourced from the same library's `effect/` folder (31 real
+  frames vs. the old auto-generated 8) and wired into `BattleController` -- it now
+  actually plays on every hit, not just a red flash.
+- `BattleVisuals` normalizes unit size by world-space height instead of a flat scale
+  multiplier, so swapping in art with a different native resolution can't repeat the
+  M3 overlap bug.
+- **Manual/turn-based mode added** alongside auto-battle -- press `T` in-game to
+  toggle. Player turns pause and highlight valid targets (yellow ring); enemy turns
+  still resolve automatically. Click-to-target via screen-space sprite bounds, no
+  colliders needed.
+- Verified: clean batchmode compile, 9/9 EditMode tests, and a real screenshot of the
+  standalone build confirmed the new art/layout. Manual mode's code path mirrors the
+  already-tested auto path (same `ResolveAction`) but its interactive click-to-target
+  hasn't been screenshot-verified yet -- the dev build window was closed mid-test.
+  Worth a quick check next session.
 
 ## Next up
 
-M4/polish: manual unit-and-target selection (currently auto-battle only), wire the
-FMV clips into `BattleVisuals` (currently pixel sprites only, clips exist but aren't
-played back yet), tune the placeholder damage/heal numbers once the auto-battle is
-confirmed working.
+M5: Android build. FMV clip playback into `BattleVisuals` (clips exist, chroma-key
+shader doesn't yet) is worth doing before considering the vertical slice's visual
+layer "complete" per the original brief's three-layer renderer design.
