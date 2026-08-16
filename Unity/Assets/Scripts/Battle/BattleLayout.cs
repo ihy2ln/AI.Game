@@ -14,21 +14,27 @@ namespace Game.Battle
         // DockColumnSpacing must stay comfortably above the widest expected sprite's
         // world-space width or adjacent units overlap -- confirmed visually via a real
         // build, not assumed (a 3-unit-wide sprite at 2.4 spacing physically overlapped
-        // its neighbour). Units normalize to TargetUnitHeight regardless of source
-        // resolution/aspect (see BattleVisuals) instead of a flat scale multiplier, so
-        // a square-ish sprite at that height is ~TargetUnitHeight wide in the worst
-        // case -- DockColumnSpacing leaves comfortable margin above that.
+        // its neighbour, and a first pass at 1.9 for this three-panel layout overlapped
+        // Husk/Stinger the same way -- see M8's visual verification). Units normalize to
+        // TargetUnitHeight regardless of source resolution/aspect (see BattleVisuals)
+        // instead of a flat scale multiplier, so a square-ish sprite at that height is
+        // ~TargetUnitHeight wide in the worst case -- 3.6 (the original single-line
+        // layout's proven-safe spacing) leaves comfortable margin above that.
         public const float TargetUnitHeight = 3.0f;
-        public const float DockColumnSpacing = 1.9f;
+        public const float DockColumnSpacing = 3.6f;
 
-        // Distance of each side's front rank from screen centre -- deliberately large
-        // relative to DockColumnSpacing so the reserved middle stage reads as the
-        // visual focal point of the screen, not a sliver between two lineups.
-        public const float DockFrontOffset = 6.2f;
+        // Distance of each side's front rank from screen centre. Equal to
+        // DockColumnSpacing so the three panels read as roughly equal thirds: each
+        // dock's own front-to-back span is 2*DockColumnSpacing wide, and the reserved
+        // centre stage (2*DockFrontOffset wide) matches that. ApplyBattleCamera widens
+        // orthographicSize to fit the back rank (front + 2*spacing) comfortably inside
+        // the view at a typical widescreen aspect.
+        public const float DockFrontOffset = 3.6f;
 
         // Where an acting/targeted unit stands during its centre-stage cinematic beat
-        // (BattleVisuals.MoveToStage), on its own faction's side of centre.
-        public const float StageOffset = 2.2f;
+        // (BattleVisuals.MoveToStage), on its own faction's side of centre -- close
+        // enough to read as "meeting in the middle" without the two sprites colliding.
+        public const float StageOffset = 2.0f;
 
         public const float GroundY = -2.1f;
 
@@ -47,7 +53,7 @@ namespace Game.Battle
         public static void ApplyBattleCamera(Camera cam)
         {
             cam.orthographic = true;
-            cam.orthographicSize = 6.2f;
+            cam.orthographicSize = 7.0f;
             cam.transform.position = new Vector3(0f, -0.2f, -10f);
             cam.transform.rotation = Quaternion.identity;
             cam.clearFlags = CameraClearFlags.SolidColor;

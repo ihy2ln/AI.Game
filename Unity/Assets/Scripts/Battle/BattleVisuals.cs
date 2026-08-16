@@ -151,6 +151,15 @@ namespace Game.Battle
             }
         }
 
+        /// <summary>Immediately (no tween) snaps every unit back to its dock position --
+        /// used after Undo/Redo, which can interrupt a MoveToStage/ReturnToDock tween
+        /// mid-flight when it stops the turn coroutine.</summary>
+        public void SnapAllToDock(BattleWorld world)
+        {
+            foreach (var unit in world.AllUnits)
+                if (_unitViews.TryGetValue(unit, out var go)) go.transform.position = DockPosition(unit);
+        }
+
         public void FlashHit(BattleUnit unit)
         {
             if (_unitRenderers.TryGetValue(unit, out var sr)) StartCoroutine(FlashRoutine(sr));

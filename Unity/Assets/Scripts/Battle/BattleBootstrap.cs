@@ -27,6 +27,9 @@ namespace Game.Battle
             camGo.tag = "MainCamera";
             BattleLayout.ApplyBattleCamera(cam);
 
+            var settings = BattleSettings.Load();
+            AudioListener.volume = settings.MasterVolume;
+
             var world = new BattleWorld();
 
             var visualsGo = new GameObject("BattleVisuals");
@@ -38,11 +41,11 @@ namespace Game.Battle
             ctrlGo.transform.SetParent(transform, false);
             var ctrl = ctrlGo.AddComponent<BattleController>();
             ctrl.OnRestartRequested += Boot;
-            ctrl.Init(world, visuals, cam);
+            ctrl.Init(world, visuals, cam, settings);
 
             var hudGo = new GameObject("BattleHud");
             hudGo.transform.SetParent(transform, false);
-            hudGo.AddComponent<BattleHud>().Init(ctrl, cam, visuals);
+            hudGo.AddComponent<BattleHud>().Init(ctrl, cam, visuals, settings.LogOpenByDefault);
 
             Debug.Log(world.LoadedOk
                 ? "[AI.Game] Battle booted (side-view auto-battle vertical slice)."
