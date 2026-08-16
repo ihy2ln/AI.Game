@@ -128,8 +128,54 @@ def import_fx(frame_count: int = 10, key_tolerance: int = 70, frame_size: int = 
     print(f"fx -> {dst_dir.relative_to(REPO_ROOT)}/fx_hit_impact_sheet.png ({frame_count} frames from {len(frames)})")
 
 
+ASSETFORGE_URL = "http://127.0.0.1:8420"
+
+
+def register_with_assetforge():
+    """Registers the processed output folders with the AssetForge asset manager
+    (local app, separate from this pipeline -- S:\\AI\\Game Engine\\assetforge) so the
+    project owner can browse/re-edit them there without re-running this script.
+    Best-effort: silently skipped if AssetForge isn't running."""
+    import urllib.request
+    import urllib.error
+
+    def api_post(path: str, payload: dict):
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{ASSETFORGE_URL}{path}", data=data,
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def api_get(path: str):
+        with urllib.request.urlopen(f"{ASSETFORGE_URL}{path}", timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    try:
+        api_get("/api/health")
+    except (urllib.error.URLError, OSError):
+        print("AssetForge not reachable at 127.0.0.1:8420 -- skipping library registration")
+        return
+
+    folders = ["battle_sprites", "portraits", "fx"]
+    for folder in folders:
+        path = str(OUT_ROOT / folder)
+        result = api_post("/api/assets/import", {"path": path, "mode": "copy", "recursive": True})
+        print(f"assetforge import {folder} -> {result}")
+
+    tagged = 0
+    for folder in folders:
+        for asset in api_get("/api/assets?q=")["items"]:
+            if folder in asset.get("dir_path", "") and "AI.Game" in asset.get("dir_path", ""):
+                api_post(f"/api/assets/{asset['id']}/tags", {"tags": ["battle-roster", folder]})
+                tagged += 1
+    print(f"assetforge tagged {tagged} assets with battle-roster")
+
+
 if __name__ == "__main__":
     import_sprites()
     import_portraits()
     import_fx()
+    register_with_assetforge()
     print("done")
