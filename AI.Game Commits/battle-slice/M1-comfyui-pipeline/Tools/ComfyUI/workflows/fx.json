@@ -1,0 +1,173 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "MiniMaxH3\\minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "MiniMaxH3\\minimax_h3_video_vae_fp16.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "MiniMaxH3\\minimax_h3_audio_vae_fp32.safetensors"
+    }
+  },
+  "5": {
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "audio_vae": [
+        "4",
+        0
+      ],
+      "prompt": "explosive magical hit-impact burst, bright orange and yellow energy flash with sparks radiating outward, small compact burst centered in frame, isolated on a completely flat uniform solid pure blue background filling all empty space, chroma key blue screen backdrop, background contains no orange no yellow no green only flat blue, no character, no ground, no gradient in background, simple vfx sprite animation, high contrast, quick flash",
+      "width": 512,
+      "height": 512,
+      "length": 8,
+      "ref_image_size": "match"
+    }
+  },
+  "6": {
+    "class_type": "MiniMaxH3TurboLoRA",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "lora_name": "H3\\minimax_h3_turbo_4step_ckpt500.safetensors",
+      "strength": 1.0,
+      "low_vram": false
+    }
+  },
+  "7": {
+    "class_type": "MiniMaxH3SigmaShift",
+    "inputs": {
+      "model": [
+        "6",
+        0
+      ],
+      "shift_video": 12.0,
+      "shift_audio": 3.0
+    }
+  },
+  "8": {
+    "class_type": "MiniMaxH3TurboSampler",
+    "inputs": {}
+  },
+  "9": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "model": [
+        "7",
+        0
+      ],
+      "scheduler": "simple",
+      "steps": 4,
+      "denoise": 1.0
+    }
+  },
+  "10": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 777
+    }
+  },
+  "11": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "7",
+        0
+      ],
+      "conditioning": [
+        "5",
+        0
+      ]
+    }
+  },
+  "12": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "10",
+        0
+      ],
+      "guider": [
+        "11",
+        0
+      ],
+      "sampler": [
+        "8",
+        0
+      ],
+      "sigmas": [
+        "9",
+        0
+      ],
+      "latent_image": [
+        "5",
+        1
+      ]
+    }
+  },
+  "13": {
+    "class_type": "VAEDecodeTiled",
+    "inputs": {
+      "samples": [
+        "12",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "tile_size": 512,
+      "overlap": 64,
+      "temporal_size": 32,
+      "temporal_overlap": 8
+    }
+  },
+  "14": {
+    "class_type": "CRTChromaKeyOverlay",
+    "inputs": {
+      "images": [
+        "13",
+        0
+      ],
+      "ClickOnMe": "#0000FF",
+      "tolerance": 18.0,
+      "expand_pixels": 0,
+      "blur_radius": 1.0
+    }
+  },
+  "15": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "14",
+        0
+      ],
+      "filename_prefix": "fx_hit_impact"
+    }
+  }
+}

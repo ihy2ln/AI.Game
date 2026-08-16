@@ -1,0 +1,38 @@
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
+dist/
+.cache/
+android-sdk/
+android/.gradle/
+android/**/build/
+android/local.properties
+*.apk
+!releases/AI.Game-Farm-v0.2.0-debug.apk
+releases/zips/*.apk
+
+# Battle slice: APKs go to GitHub Releases, not git history
+releases/AI.Game-Battle-*.apk
+
+# Battle slice: raw pre-postprocess ComfyUI output, not the final committed assets
+Tools/ComfyUI/.generated_raw/
+__pycache__/
+*.pyc
+
+# Unity
+Unity/Library/
+Unity/Temp/
+Unity/Obj/
+Unity/Build/
+Unity/Builds/
+Unity/Logs/
+Unity/UserSettings/
+Unity/MemoryCaptures/
+Unity/*.csproj
+Unity/*.sln
+Unity/*.userprefs
+Unity/sysinfo.txt
+logs/
