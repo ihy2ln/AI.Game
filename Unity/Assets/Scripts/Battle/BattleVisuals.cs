@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace Game.Battle
@@ -17,6 +18,9 @@ namespace Game.Battle
             _map = world.Map;
             BuildBackground(world);
             foreach (var unit in world.AllUnits) BuildUnitView(unit);
+            // Bench units get a view too, parked inactive off-dock, so SubUnit only ever
+            // has to toggle active state + reposition rather than instantiate mid-battle.
+            foreach (var unit in world.Bench) BuildUnitView(unit, startActive: false);
         }
 
         void BuildBackground(BattleWorld world)
@@ -29,14 +33,18 @@ namespace Game.Battle
             if (bgSprite != null)
             {
                 sr.sprite = bgSprite;
-                // Scale the 1920x1080 background sprite to fill the camera's view.
+                // Scale to fill the camera's view. Uniform "cover" scale (not independent
+                // x/y stretch) -- source photos vary between landscape and portrait, and a
+                // non-uniform stretch visibly squashed a portrait source when one was swapped
+                // in for the second battle map.
                 var cam = Camera.main;
                 if (cam != null && cam.orthographic)
                 {
                     float worldHeight = cam.orthographicSize * 2f;
                     float worldWidth = worldHeight * cam.aspect;
                     var bounds = sr.sprite.bounds.size;
-                    go.transform.localScale = new Vector3(worldWidth / bounds.x, worldHeight / bounds.y, 1f);
+                    float scale = Mathf.Max(worldWidth / bounds.x, worldHeight / bounds.y);
+                    go.transform.localScale = new Vector3(scale, scale, 1f);
                 }
             }
             else
@@ -47,11 +55,11 @@ namespace Game.Battle
             sr.sortingOrder = -10;
         }
 
-        void BuildUnitView(BattleUnit unit)
+        void BuildUnitView(BattleUnit unit, bool startActive = true)
         {
             var go = new GameObject($"Unit_{unit.Definition.characterId}");
             go.transform.SetParent(transform, false);
-            go.transform.position = BattleLayout.UnitPosition(unit.Column);
+            go.transform.position = startActive ? BattleLayout.UnitPosition(unit.Column) : Vector3.zero;
 
             var sr = go.AddComponent<SpriteRenderer>();
             var def = unit.Definition;
@@ -68,6 +76,7 @@ namespace Game.Battle
             float scale = BattleLayout.TargetUnitHeight / height;
             go.transform.localScale = Vector3.one * scale;
 
+            go.SetActive(startActive);
             _unitViews[unit] = go;
             _unitRenderers[unit] = sr;
         }
@@ -117,6 +126,51 @@ namespace Game.Battle
             yield return TweenPair(actor, DockPosition(actor), target, DockPosition(target));
         }
 
+        /// <summary>Reposition action: two same-faction units have already swapped Column
+        /// values (BattleController.Reposition) -- tween both to their new dock positions.</summary>
+        public IEnumerator SwapPositions(BattleUnit a, BattleUnit b)
+        {
+            yield return TweenPair(a, DockPosition(a), b, DockPosition(b));
+        }
+
+        /// <summary>After Formation.Compact reassigns columns on a death, tween every
+        /// surviving unit of that faction to its new dock position so the frontline
+        /// shift reads clearly instead of popping.</summary>
+        public IEnumerator ReflowFormation(BattleWorld world, Game.Data.Faction faction)
+        {
+            var movers = world.AllUnits.Where(u => u.Faction == faction && u.IsAlive).ToList();
+            if (movers.Count == 0) yield break;
+
+            float t = 0f;
+            var froms = movers.Select(u => _unitViews.TryGetValue(u, out var go) ? go.transform.position : DockPosition(u)).ToList();
+            while (t < StageTweenSeconds)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / StageTweenSeconds));
+                for (int i = 0; i < movers.Count; i++)
+                    if (_unitViews.TryGetValue(movers[i], out var go))
+                        go.transform.position = Vector3.Lerp(froms[i], DockPosition(movers[i]), k);
+                yield return null;
+            }
+            foreach (var u in movers)
+                if (_unitViews.TryGetValue(u, out var go)) go.transform.position = DockPosition(u);
+        }
+
+        /// <summary>Sub-in/sub-out: outgoing steps off-field, incoming appears in the
+        /// exact column it vacated. BattleController has already swapped their Column
+        /// values and the World.AllUnits/Bench lists before calling this.</summary>
+        public IEnumerator SwapUnitView(BattleUnit outgoing, BattleUnit incoming)
+        {
+            if (_unitViews.TryGetValue(outgoing, out var outGo)) outGo.SetActive(false);
+            if (_unitViews.TryGetValue(incoming, out var inGo))
+            {
+                inGo.transform.position = DockPosition(incoming);
+                inGo.SetActive(true);
+                if (_unitRenderers.TryGetValue(incoming, out var inSr)) inSr.color = Color.white;
+            }
+            yield break;
+        }
+
         IEnumerator TweenPair(BattleUnit unitA, Vector3 toA, BattleUnit unitB, Vector3 toB)
         {
             _unitViews.TryGetValue(unitA, out var goA);
@@ -151,13 +205,21 @@ namespace Game.Battle
             }
         }
 
-        /// <summary>Immediately (no tween) snaps every unit back to its dock position --
-        /// used after Undo/Redo, which can interrupt a MoveToStage/ReturnToDock tween
-        /// mid-flight when it stops the turn coroutine.</summary>
+        /// <summary>Immediately (no tween) snaps every unit back to its dock position and
+        /// re-applies active/bench visibility -- used after Undo/Redo, which can interrupt
+        /// a MoveToStage/ReturnToDock tween mid-flight when it stops the turn coroutine,
+        /// and can also move units between World.AllUnits and World.Bench (undoing past a
+        /// sub-in/sub-out).</summary>
         public void SnapAllToDock(BattleWorld world)
         {
             foreach (var unit in world.AllUnits)
-                if (_unitViews.TryGetValue(unit, out var go)) go.transform.position = DockPosition(unit);
+            {
+                if (!_unitViews.TryGetValue(unit, out var go)) continue;
+                go.SetActive(true);
+                go.transform.position = DockPosition(unit);
+            }
+            foreach (var unit in world.Bench)
+                if (_unitViews.TryGetValue(unit, out var go)) go.SetActive(false);
         }
 
         public void FlashHit(BattleUnit unit)

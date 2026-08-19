@@ -13,9 +13,14 @@ namespace Game.Battle
 
         public int RoundNumber { get; private set; }
 
-        public TurnOrder(IEnumerable<BattleUnit> allUnits)
+        /// <summary>Stores the caller's list by reference, not a copy -- BattleWorld.AllUnits
+        /// is a live list that sub-in/sub-out mutates (Add/Remove) mid-battle, and those
+        /// changes need to be visible the next time a round is refilled. A mid-round sub
+        /// doesn't retroactively touch the already-built _round queue, which is intentional:
+        /// the incoming unit joins starting next round, matching "sub costs the turn."</summary>
+        public TurnOrder(List<BattleUnit> allUnits)
         {
-            _allUnits = allUnits.ToList();
+            _allUnits = allUnits;
         }
 
         /// <summary>Next acting unit, starting a new round (re-sorted by current speed)

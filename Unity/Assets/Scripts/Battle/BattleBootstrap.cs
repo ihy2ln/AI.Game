@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace Game.Battle
@@ -11,8 +13,13 @@ namespace Game.Battle
     {
         void Start() => Boot();
 
+        /// <summary>Parameterless entry point for Start()/the context menu -- always
+        /// map 0, fresh roster. The two-map sequence and full-battle restart both funnel
+        /// through BootMap below.</summary>
         [ContextMenu("Boot Battle")]
-        public void Boot()
+        public void Boot() => BootMap(0, null, null);
+
+        public void BootMap(int mapIndex, IReadOnlyList<BattleUnit> carryOverPlayer, IReadOnlyList<BattleUnit> carryOverBench)
         {
             for (var i = transform.childCount - 1; i >= 0; i--)
             {
@@ -30,7 +37,7 @@ namespace Game.Battle
             var settings = BattleSettings.Load();
             AudioListener.volume = settings.MasterVolume;
 
-            var world = new BattleWorld();
+            var world = new BattleWorld(mapIndex, carryOverPlayer, carryOverBench);
 
             var visualsGo = new GameObject("BattleVisuals");
             visualsGo.transform.SetParent(transform, false);
@@ -40,7 +47,8 @@ namespace Game.Battle
             var ctrlGo = new GameObject("BattleController");
             ctrlGo.transform.SetParent(transform, false);
             var ctrl = ctrlGo.AddComponent<BattleController>();
-            ctrl.OnRestartRequested += Boot;
+            ctrl.OnRestartRequested += () => BootMap(0, null, null);
+            ctrl.OnAdvanceRequested += () => BootMap(mapIndex + 1, world.PlayerUnits.ToList(), world.Bench.ToList());
             ctrl.Init(world, visuals, cam, settings);
 
             var hudGo = new GameObject("BattleHud");
@@ -48,7 +56,7 @@ namespace Game.Battle
             hudGo.AddComponent<BattleHud>().Init(ctrl, cam, visuals, settings.LogOpenByDefault);
 
             Debug.Log(world.LoadedOk
-                ? "[AI.Game] Battle booted (side-view auto-battle vertical slice)."
+                ? $"[AI.Game] Battle booted (map {mapIndex + 1}/{BattleWorld.MapCount})."
                 : "[AI.Game] Battle boot failed to load data -- run AI.Game > Battle > Build Assets From Manifest.");
         }
     }

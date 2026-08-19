@@ -88,7 +88,9 @@ namespace Game.Battle
             GUI.Label(new Rect(24, h - 48, Mathf.Min(680, w - 48), 30), _ctrl.LastAction, _body);
 
             DrawDamageNumbers();
-            DrawTargetPrompt(w);
+            if (_ctrl.Phase == ActionPhase.ChooseAction) DrawActionMenu(w);
+            if (_ctrl.Phase == ActionPhase.ChooseBench) DrawBenchMenu(w);
+            if (_ctrl.Phase == ActionPhase.ChooseTarget) DrawTargetPrompt(w);
             if (_showLog) DrawLogPanel(w, h);
             if (_showKeybinds) DrawKeybindPanel(w, h);
 
@@ -225,7 +227,7 @@ namespace Game.Battle
         {
             if (_ctrl.PendingActor == null || _cam == null || _visuals == null) return;
 
-            GUI.Label(new Rect(0, 126, w, 26), $"{_ctrl.PendingActor.Definition.displayName}'s turn -- tap a highlighted target",
+            GUI.Label(new Rect(0, 126, w, 26), $"{_ctrl.PendingActor.Definition.displayName} -- tap a highlighted target",
                 _prompt);
 
             foreach (var target in _ctrl.PendingTargets)
@@ -241,6 +243,73 @@ namespace Game.Battle
                 GUI.Box(ring, GUIContent.none);
                 GUI.color = old;
             }
+        }
+
+        /// <summary>Top-level action menu for a manual-mode player turn: Attack/Heal
+        /// (standardSkill), a second Attack button if the unit also has secondarySkill
+        /// (Healer archetypes), Reposition, and Sub.</summary>
+        void DrawActionMenu(int w)
+        {
+            var actor = _ctrl.PendingActor;
+            if (actor == null) return;
+
+            var def = actor.Definition;
+            var options = new System.Collections.Generic.List<(string label, System.Action onClick)>();
+
+            if (def.standardSkill != null)
+            {
+                string label = def.standardSkill.targetsAllies ? "Heal" : "Attack";
+                options.Add((label, () => _ctrl.ChooseSkill(def.standardSkill)));
+            }
+            if (def.secondarySkill != null)
+            {
+                string label = def.secondarySkill.targetsAllies ? "Heal" : "Attack";
+                options.Add((label, () => _ctrl.ChooseSkill(def.secondarySkill)));
+            }
+            options.Add(("Reposition", _ctrl.ChooseReposition));
+            options.Add(("Sub", _ctrl.OpenBenchMenu));
+
+            const float panelW = 360f, btnH = 34f;
+            float panelH = 44f + options.Count * (btnH + 8f);
+            var panel = new Rect(w / 2f - panelW / 2f, 150, panelW, panelH);
+            GUI.Box(panel, GUIContent.none);
+            GUI.Label(new Rect(panel.x + 10, panel.y + 6, panel.width - 20, 24),
+                $"{def.displayName} -- choose an action", _prompt);
+
+            float y = panel.y + 40;
+            foreach (var (label, onClick) in options)
+            {
+                GUI.enabled = label != "Reposition" || _ctrl.CanReposition;
+                if (label == "Sub") GUI.enabled = _ctrl.CanSub;
+                if (GUI.Button(new Rect(panel.x + 20, y, panel.width - 40, btnH), label, _btn)) onClick();
+                GUI.enabled = true;
+                y += btnH + 8f;
+            }
+        }
+
+        void DrawBenchMenu(int w)
+        {
+            var actor = _ctrl.PendingActor;
+            if (actor == null) return;
+
+            var bench = _ctrl.BenchOptions;
+            const float panelW = 360f, btnH = 36f;
+            float panelH = 60f + bench.Count * (btnH + 8f) + 44f;
+            var panel = new Rect(w / 2f - panelW / 2f, 150, panelW, panelH);
+            GUI.Box(panel, GUIContent.none);
+            GUI.Label(new Rect(panel.x + 10, panel.y + 6, panel.width - 20, 24),
+                $"Sub in for {actor.Definition.displayName}", _prompt);
+
+            float y = panel.y + 40;
+            foreach (var benched in bench)
+            {
+                string label = $"{benched.Definition.displayName}  ({benched.CurrentHp}/{benched.Stats.hp} HP)";
+                if (GUI.Button(new Rect(panel.x + 20, y, panel.width - 40, btnH), label, _btn))
+                    _ctrl.ChooseSub(benched);
+                y += btnH + 8f;
+            }
+            if (GUI.Button(new Rect(panel.x + 20, y + 8f, panel.width - 40, btnH), "Back", _smallBtn))
+                _ctrl.CancelBenchMenu();
         }
 
         void DrawDamageNumbers()
@@ -260,10 +329,20 @@ namespace Game.Battle
 
         void DrawOutcomeBanner(int w, int h)
         {
+            bool advancing = _ctrl.Outcome == BattleOutcome.PlayerVictory && _ctrl.World.HasNextMap;
             string label = _ctrl.Outcome == BattleOutcome.PlayerVictory ? "VICTORY" : "DEFEAT";
             GUI.Label(new Rect(0, h / 2f - 60, w, 60), label, _big);
-            GUI.Label(new Rect(0, h / 2f, w, 30), "Press R or tap below to fight again", _sub);
-            if (GUI.Button(new Rect(w / 2f - 80, h / 2f + 36, 160, 44), "Restart", _btn)) _ctrl.Restart();
+
+            if (advancing)
+            {
+                GUI.Label(new Rect(0, h / 2f, w, 30), "The party presses onward, wounds and all", _sub);
+                if (GUI.Button(new Rect(w / 2f - 100, h / 2f + 36, 200, 44), "Next Battle", _btn)) _ctrl.AdvanceToNextMap();
+            }
+            else
+            {
+                GUI.Label(new Rect(0, h / 2f, w, 30), "Press R or tap below to fight again", _sub);
+                if (GUI.Button(new Rect(w / 2f - 80, h / 2f + 36, 160, 44), "Restart", _btn)) _ctrl.Restart();
+            }
         }
 
         void DrawPauseOverlay(int w, int h)

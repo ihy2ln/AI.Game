@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using Game.Data;
 
@@ -16,13 +17,18 @@ namespace Game.Battle
 
     public enum BattleOutcome { InProgress, PlayerVictory, EnemyVictory }
 
+    /// <summary>Which top-level action a manual-mode player turn resolved to.</summary>
+    public enum ChosenAction { None, Skill, Reposition, Sub }
+
+    /// <summary>Drives what BattleHud shows during a manual-mode player turn.</summary>
+    public enum ActionPhase { Idle, ChooseAction, ChooseBench, ChooseTarget }
+
     /// <summary>
     /// Turn state machine with two modes:
     ///  - Auto: both sides act automatically each turn (BD2/gacha-style "auto battle").
     ///  - Manual: enemy turns still resolve automatically, but a player-faction turn
-    ///    pauses and waits for a tap/click on one of the highlighted valid targets.
-    /// Only one skill exists per unit in this slice (standardSkill), so "manual" means
-    /// choosing WHO to hit/heal, not picking a skill -- skill selection is a later pass.
+    ///    pauses and waits for the player to choose an action (Attack/Heal, Reposition,
+    ///    or Sub), then a target/bench pick if that action needs one.
     ///
     /// Also owns pause (Time.timeScale-driven -- every wait in this class and in
     /// BattleVisuals' stage tweens is a WaitForSeconds/Time.deltaTime, so scaling or
@@ -41,12 +47,17 @@ namespace Game.Battle
         public bool ManualMode { get; private set; }
         public bool Paused { get; private set; }
         public BattleUnit PendingActor { get; private set; }
+        public ActionPhase Phase { get; private set; } = ActionPhase.Idle;
         public IReadOnlyList<BattleUnit> PendingTargets => _pendingTargets;
+        public IReadOnlyList<BattleUnit> BenchOptions => World.Bench;
+        public bool CanReposition => _repositionOptions.Count > 0;
+        public bool CanSub => World.Bench.Count > 0;
 
         public bool CanUndo => _history.CanUndo;
         public bool CanRedo => _history.CanRedo;
 
         public event Action OnRestartRequested;
+        public event Action OnAdvanceRequested;
 
         BattleVisuals _visuals;
         Camera _cam;
@@ -54,7 +65,11 @@ namespace Game.Battle
         readonly BattleHistory _history = new();
         Coroutine _runCoroutine;
         List<BattleUnit> _pendingTargets = new();
+        List<BattleUnit> _repositionOptions = new();
         BattleUnit _submittedTarget;
+        ChosenAction _chosenAction;
+        SkillDefinition _chosenSkill;
+        BattleUnit _chosenSubIncoming;
         const float PreActionDelaySeconds = 0.35f;
         const float ImpactHoldSeconds = 0.5f;
 
@@ -72,7 +87,7 @@ namespace Game.Battle
             _turnOrder = new TurnOrder(world.AllUnits);
             if (!world.LoadedOk) return;
 
-            _history.Capture(World.AllUnits, Log);
+            _history.Capture(World.AllUnits, World.Bench, Log);
             _runCoroutine = StartCoroutine(RunBattle());
         }
 
@@ -92,7 +107,7 @@ namespace Game.Battle
             if (ctrl && Input.GetKeyDown(KeyCode.Z)) Undo();
             if (ctrl && Input.GetKeyDown(KeyCode.Y)) Redo();
 
-            if (PendingActor != null && !Paused && Input.GetMouseButtonDown(0)) HandleClick(Input.mousePosition);
+            if (Phase == ActionPhase.ChooseTarget && !Paused && Input.GetMouseButtonDown(0)) HandleClick(Input.mousePosition);
         }
 
         void OnDestroy()
@@ -120,14 +135,14 @@ namespace Game.Battle
         public void Undo()
         {
             if (!_history.CanUndo) return;
-            _history.Undo(World.AllUnits, Log);
+            _history.Undo(World.AllUnits, World.Bench, Log);
             ResumeFromHistory();
         }
 
         public void Redo()
         {
             if (!_history.CanRedo) return;
-            _history.Redo(World.AllUnits, Log);
+            _history.Redo(World.AllUnits, World.Bench, Log);
             ResumeFromHistory();
         }
 
@@ -135,6 +150,7 @@ namespace Game.Battle
         {
             if (_runCoroutine != null) StopCoroutine(_runCoroutine);
             PendingActor = null;
+            Phase = ActionPhase.Idle;
             _pendingTargets = new List<BattleUnit>();
             _submittedTarget = null;
             Outcome = BattleOutcome.InProgress;
@@ -157,6 +173,43 @@ namespace Game.Battle
             _submittedTarget = clicked;
         }
 
+        // -- manual-mode action menu (called by BattleHud) --------------------------
+
+        /// <summary>Player picked "Attack"/"Heal" (standardSkill) or the secondary
+        /// attack, if the acting unit has one. Wakes RunManualPlayerTurn's action-choice
+        /// wait; target selection happens next via HandleClick.</summary>
+        public void ChooseSkill(SkillDefinition skill)
+        {
+            if (skill == null) return;
+            _chosenSkill = skill;
+            _chosenAction = ChosenAction.Skill;
+        }
+
+        /// <summary>Player picked Reposition -- swap column with an adjacent ally.</summary>
+        public void ChooseReposition()
+        {
+            if (!CanReposition) return;
+            _chosenAction = ChosenAction.Reposition;
+        }
+
+        /// <summary>HUD-only navigation into the bench picker -- doesn't wake the
+        /// coroutine yet (that happens once a bench unit is actually chosen).</summary>
+        public void OpenBenchMenu()
+        {
+            if (!CanSub) return;
+            Phase = ActionPhase.ChooseBench;
+        }
+
+        public void CancelBenchMenu() => Phase = ActionPhase.ChooseAction;
+
+        /// <summary>Player picked which bench unit subs in for the acting unit.</summary>
+        public void ChooseSub(BattleUnit benchUnit)
+        {
+            if (benchUnit == null || !World.Bench.Contains(benchUnit)) return;
+            _chosenSubIncoming = benchUnit;
+            _chosenAction = ChosenAction.Sub;
+        }
+
         IEnumerator RunBattle()
         {
             while (!World.IsOver)
@@ -166,51 +219,148 @@ namespace Game.Battle
 
                 yield return new WaitForSeconds(PreActionDelaySeconds);
 
-                var skill = unit.Definition.standardSkill;
-                if (skill == null || skill.pattern == null)
-                {
-                    LogLine($"{unit.Definition.displayName} has no usable skill.");
-                }
+                if (ManualMode && unit.Faction == Faction.Player)
+                    yield return RunManualPlayerTurn(unit);
                 else
-                {
-                    var targets = TargetResolver.GetValidTargets(unit, skill, World.AllUnits);
-                    if (targets.Count == 0)
-                    {
-                        LogLine($"{unit.Definition.displayName} has no valid target.");
-                    }
-                    else
-                    {
-                        BattleUnit target;
-                        if (ManualMode && unit.Faction == Faction.Player)
-                        {
-                            PendingActor = unit;
-                            _pendingTargets = targets;
-                            _submittedTarget = null;
-                            LogLine($"{unit.Definition.displayName}'s turn -- tap a target.");
-                            yield return new WaitUntil(() => _submittedTarget != null);
-                            target = _submittedTarget;
-                            PendingActor = null;
-                            _pendingTargets = new List<BattleUnit>();
-                        }
-                        else
-                        {
-                            target = targets[UnityEngine.Random.Range(0, targets.Count)];
-                        }
-
-                        yield return _visuals.MoveToStage(unit, target);
-                        ResolveAction(unit, skill, target);
-                        yield return new WaitForSeconds(ImpactHoldSeconds);
-                        yield return _visuals.ReturnToDock(unit, target);
-                    }
-                }
+                    yield return RunAutoTurn(unit);
 
                 // One capture per consumed TurnOrder.Next() -- see BattleHistory's
                 // class doc for why this 1:1 correspondence matters for Undo/Redo.
-                _history.Capture(World.AllUnits, Log);
+                _history.Capture(World.AllUnits, World.Bench, Log);
             }
 
             Outcome = World.PlayerDefeated ? BattleOutcome.EnemyVictory : BattleOutcome.PlayerVictory;
-            LogLine(Outcome == BattleOutcome.PlayerVictory ? "Victory!" : "Defeat...");
+            if (Outcome == BattleOutcome.PlayerVictory)
+                LogLine(World.HasNextMap ? "Victory! Proceed to the next battle." : "Victory!");
+            else
+                LogLine("Defeat...");
+        }
+
+        IEnumerator RunAutoTurn(BattleUnit unit)
+        {
+            var skill = ChooseAutoSkill(unit, out var targets);
+            if (skill == null)
+            {
+                LogLine($"{unit.Definition.displayName} has no usable skill.");
+                yield break;
+            }
+            if (targets.Count == 0)
+            {
+                LogLine($"{unit.Definition.displayName} has no valid target.");
+                yield break;
+            }
+
+            var target = targets[UnityEngine.Random.Range(0, targets.Count)];
+            yield return _visuals.MoveToStage(unit, target);
+            ResolveAction(unit, skill, target);
+            yield return new WaitForSeconds(ImpactHoldSeconds);
+            yield return _visuals.ReturnToDock(unit, target);
+            if (!target.IsAlive) yield return _visuals.ReflowFormation(World, target.Faction);
+        }
+
+        /// <summary>Auto-mode/enemy skill choice. Healer-archetype units (secondarySkill
+        /// set) heal when an ally is missing HP, otherwise fall back to their low-power
+        /// attack if it has a target -- keeps a healer from wasting turns topping off a
+        /// full-HP ally once nobody nearby needs it.</summary>
+        SkillDefinition ChooseAutoSkill(BattleUnit unit, out List<BattleUnit> targets)
+        {
+            var primary = unit.Definition.standardSkill;
+            var secondary = unit.Definition.secondarySkill;
+
+            if (primary == null || primary.pattern == null)
+            {
+                targets = new List<BattleUnit>();
+                return null;
+            }
+
+            if (secondary != null && primary.targetsAllies)
+            {
+                bool allyNeedsHeal = World.AllUnits.Any(u =>
+                    u.Faction == unit.Faction && u.IsAlive && u.CurrentHp < u.Stats.hp);
+                if (!allyNeedsHeal)
+                {
+                    var atkTargets = TargetResolver.GetValidTargets(unit, secondary, World.AllUnits);
+                    if (atkTargets.Count > 0)
+                    {
+                        targets = atkTargets;
+                        return secondary;
+                    }
+                }
+            }
+
+            targets = TargetResolver.GetValidTargets(unit, primary, World.AllUnits);
+            return primary;
+        }
+
+        IEnumerator RunManualPlayerTurn(BattleUnit unit)
+        {
+            PendingActor = unit;
+            _repositionOptions = World.AllUnits
+                .Where(u => u.Faction == unit.Faction && u.IsAlive && Mathf.Abs(u.Column - unit.Column) == 1)
+                .ToList();
+            _chosenAction = ChosenAction.None;
+            _chosenSkill = null;
+            _chosenSubIncoming = null;
+            _submittedTarget = null;
+            Phase = ActionPhase.ChooseAction;
+            LogLine($"{unit.Definition.displayName}'s turn -- choose an action.");
+
+            yield return new WaitUntil(() => _chosenAction != ChosenAction.None);
+
+            switch (_chosenAction)
+            {
+                case ChosenAction.Skill:
+                {
+                    Phase = ActionPhase.ChooseTarget;
+                    _pendingTargets = TargetResolver.GetValidTargets(unit, _chosenSkill, World.AllUnits);
+                    if (_pendingTargets.Count == 0)
+                    {
+                        LogLine($"{unit.Definition.displayName} has no valid target.");
+                        break;
+                    }
+                    yield return new WaitUntil(() => _submittedTarget != null);
+                    var target = _submittedTarget;
+                    yield return _visuals.MoveToStage(unit, target);
+                    ResolveAction(unit, _chosenSkill, target);
+                    yield return new WaitForSeconds(ImpactHoldSeconds);
+                    yield return _visuals.ReturnToDock(unit, target);
+                    if (!target.IsAlive) yield return _visuals.ReflowFormation(World, target.Faction);
+                    break;
+                }
+                case ChosenAction.Reposition:
+                {
+                    Phase = ActionPhase.ChooseTarget;
+                    _pendingTargets = _repositionOptions;
+                    yield return new WaitUntil(() => _submittedTarget != null);
+                    var neighbor = _submittedTarget;
+                    LogLine($"{unit.Definition.displayName} repositions with {neighbor.Definition.displayName}.");
+                    (unit.Column, neighbor.Column) = (neighbor.Column, unit.Column);
+                    yield return _visuals.SwapPositions(unit, neighbor);
+                    break;
+                }
+                case ChosenAction.Sub:
+                {
+                    var incoming = _chosenSubIncoming;
+                    SubUnit(unit, incoming);
+                    yield return _visuals.SwapUnitView(unit, incoming);
+                    break;
+                }
+            }
+
+            PendingActor = null;
+            Phase = ActionPhase.Idle;
+            _pendingTargets = new List<BattleUnit>();
+        }
+
+        void SubUnit(BattleUnit outgoing, BattleUnit incoming)
+        {
+            incoming.Column = outgoing.Column;
+            outgoing.Column = BattleWorld.BenchColumn;
+            World.AllUnits.Remove(outgoing);
+            World.AllUnits.Add(incoming);
+            World.Bench.Remove(incoming);
+            World.Bench.Add(outgoing);
+            LogLine($"{outgoing.Definition.displayName} subs out for {incoming.Definition.displayName}.");
         }
 
         void ResolveAction(BattleUnit unit, SkillDefinition skill, BattleUnit target)
@@ -231,7 +381,11 @@ namespace Game.Battle
                 if (Settings.ShowDamageNumbers) SpawnDamageNumber(target, damage.ToString(), Color.white);
                 _visuals.FlashHit(target);
                 _visuals.PlayImpactFx(target);
-                if (!target.IsAlive) _visuals.SyncDefeated(target);
+                if (!target.IsAlive)
+                {
+                    _visuals.SyncDefeated(target);
+                    Formation.Compact(World.AllUnits, target.Faction);
+                }
             }
         }
 
@@ -247,5 +401,8 @@ namespace Game.Battle
         }
 
         public void Restart() => OnRestartRequested?.Invoke();
+
+        /// <summary>Only meaningful when Outcome == PlayerVictory && World.HasNextMap.</summary>
+        public void AdvanceToNextMap() => OnAdvanceRequested?.Invoke();
     }
 }

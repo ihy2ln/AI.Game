@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 36b21e9231ada0748bac542cac023b1b, type: 3}
+  m_Name: Char_player_bench_ranged
+  m_EditorClassIdentifier: Game.Data::Game.Data.CharacterDefinition
+  characterId: player_bench_ranged
+  displayName: Reed
+  classType: 2
+  element: 0
+  age: 3
+  bio: 
+  baseStats:
+    hp: 90
+    attack: 18
+    defense: 8
+    magic: 8
+    resistance: 8
+    speed: 11
+  movePoints: 4
+  jump: 1
+  costLateral: 2
+  costForward: 1
+  costPerHeightLevel: 1
+  standardSkill: {fileID: 11400000, guid: 3414f42122b89414d8b03a10c2dd8714, type: 2}
+  secondarySkill: {fileID: 0}
+  classSkillPool: []
+  elementSkillPool: []
+  growthPerLevel: 0.06
+  clips: {fileID: 11400000, guid: 22c1b081b347e0d4e853fa7d5f187424, type: 2}
+  portrait: {fileID: 0}
+  pixelSprite32: {fileID: 0}
+  battleSprite: {fileID: 21300000, guid: dbfe57f6351ca4343834754744cad30e, type: 3}
+  pixelSprite96: {fileID: 0}
+  personaPrompt: 

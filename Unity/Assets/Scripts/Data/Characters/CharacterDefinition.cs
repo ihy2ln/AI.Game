@@ -36,6 +36,10 @@ namespace Game.Data
         [Header("Skills - 1 fixed, 2 rolled")]
         public SkillDefinition standardSkill;
 
+        [Tooltip("Optional low-power attack alongside standardSkill -- lets Healer-archetype "
+            + "units also deal damage, not just heal. Null for archetypes with only one action.")]
+        public SkillDefinition secondarySkill;
+
         [Tooltip("Leave empty to roll from the global pool matching classType.")]
         public List<SkillDefinition> classSkillPool = new();
 

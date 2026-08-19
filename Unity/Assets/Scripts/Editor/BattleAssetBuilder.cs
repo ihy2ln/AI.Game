@@ -85,7 +85,17 @@ namespace Game.EditorTools
             {
                 "player_melee", "player_ranged", "player_support",
                 "enemy_melee", "enemy_ranged", "enemy_support",
+                // Bench reserves (sub-in/sub-out) -- reskins of the matching active
+                // archetype's stats/skill/pattern, distinct art + name only. Substring
+                // matching against archetype names (below) already resolves these
+                // correctly since e.g. "player_bench_melee".Contains("melee").
+                "player_bench_melee", "player_bench_ranged", "player_bench_support",
             };
+
+            // Healer archetypes also get a low-power attack (secondarySkill) so they're
+            // not heal-only -- reuses the Support archetype's own ±1-column pattern,
+            // just targeting the opposing faction instead of allies.
+            var secondaryAttack = BuildSecondaryAttackSkill(skillByArchetype["Support"].pattern);
 
             var characterDefs = new Dictionary<string, CharacterDefinition>();
             foreach (var unitId in unitIds)
@@ -96,12 +106,16 @@ namespace Game.EditorTools
                     unitId, arch, tier,
                     skillByArchetype[archName], clipSetByArchetype[archName],
                     TryGet(spritesByUnit, unitId), TryGet(portraitsByUnit, unitId),
-                    unityRelRoot);
+                    unityRelRoot, secondarySkill: archName == "Support" ? secondaryAttack : null);
                 characterDefs[unitId] = charDef;
             }
 
             var (fxSheet, fxRects) = LoadFxSheet();
-            BuildMap(characterDefs, tier, LoadSprite(backgroundAsset, unityRelRoot), fxSheet, fxRects);
+            var manifestBackground = LoadSprite(backgroundAsset, unityRelRoot);
+            BuildMap(1, characterDefs, tier,
+                LoadBackgroundSprite("bg_battle1") ?? manifestBackground, fxSheet, fxRects);
+            BuildMap(2, characterDefs, tier,
+                LoadBackgroundSprite("bg_battle2") ?? manifestBackground, fxSheet, fxRects);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -142,6 +156,10 @@ namespace Game.EditorTools
             ["enemy_melee"] = "Husk",
             ["enemy_ranged"] = "Warden",
             ["enemy_support"] = "Stinger",
+            // Bench reserves -- see Tools/AssetImport/import_bench_and_maps.py.
+            ["player_bench_melee"] = "Thorne",
+            ["player_bench_ranged"] = "Reed",
+            ["player_bench_support"] = "Vesper",
         };
 
         static Sprite LoadBattleSprite(string unitId)
@@ -150,6 +168,17 @@ namespace Game.EditorTools
             var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
             if (sprite == null) Debug.LogWarning($"[AI.Game] Expected battle sprite not found (run "
                 + $"Tools/AssetImport/import_roster.py?): {path}");
+            return sprite;
+        }
+
+        // Battle-map backgrounds curated by Tools/AssetImport/import_bench_and_maps.py,
+        // same "not the ComfyUI manifest pipeline" provenance as LoadBattleSprite.
+        static Sprite LoadBackgroundSprite(string key)
+        {
+            string path = $"Assets/Art/Generated/backgrounds/{key}.png";
+            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            if (sprite == null) Debug.LogWarning($"[AI.Game] Expected background not found (run "
+                + $"Tools/AssetImport/import_bench_and_maps.py?): {path}");
             return sprite;
         }
 
@@ -225,7 +254,8 @@ namespace Game.EditorTools
         static CharacterDefinition BuildCharacter(
             string unitId, ArchetypeSpec arch, TierDefinition tier,
             SkillDefinition skill, ClipSet clipSet,
-            ManifestAsset spriteAsset, ManifestAsset portraitAsset, string unityRelRoot)
+            ManifestAsset spriteAsset, ManifestAsset portraitAsset, string unityRelRoot,
+            SkillDefinition secondarySkill = null)
         {
             var def = LoadOrCreate<CharacterDefinition>($"{OutDir}/Characters/Char_{unitId}.asset");
             def.characterId = unitId;
@@ -240,6 +270,7 @@ namespace Game.EditorTools
             def.costForward = 1;
             def.costPerHeightLevel = 1;
             def.standardSkill = skill;
+            def.secondarySkill = secondarySkill;
             def.growthPerLevel = 0.06f;
             def.clips = clipSet;
             def.portrait = LoadSprite(portraitAsset, unityRelRoot);
@@ -247,6 +278,30 @@ namespace Game.EditorTools
             def.battleSprite = LoadBattleSprite(unitId);
             EditorUtility.SetDirty(def);
             return def;
+        }
+
+        // Low-power attack alongside the Support archetype's heal -- "healers can attack
+        // too" per the project owner's ask. Reuses the heal's own ±1-column pattern
+        // (SkillPattern is just range/area geometry; targetsAllies is what makes a skill
+        // heal vs. attack), so no new Pattern_ asset is needed. "Low attack" falls out of
+        // the Support archetype's own low `attack` base stat (8, vs. 22 melee/18 ranged) --
+        // no separate balance knob required.
+        static SkillDefinition BuildSecondaryAttackSkill(SkillPattern supportPattern)
+        {
+            var skill = LoadOrCreate<SkillDefinition>($"{OutDir}/Skills/Skill_SupportAttackBasic.asset");
+            skill.skillId = "skill_support_attack_basic";
+            skill.displayName = "Support Strike";
+            skill.pool = SkillPool.Standard;
+            skill.pattern = supportPattern;
+            skill.mpCost = 0;
+            skill.cooldown = 0;
+            skill.power = 0.5f;
+            skill.usesMagic = false;
+            skill.isRanged = false;
+            skill.targetsAllies = false;
+            skill.clipKey = "basicAttack";
+            EditorUtility.SetDirty(skill);
+            return skill;
         }
 
         static (Sprite, List<Vector4>) LoadFxSheet()
@@ -265,14 +320,18 @@ namespace Game.EditorTools
             return (sprite, rects);
         }
 
-        static void BuildMap(Dictionary<string, CharacterDefinition> characterDefs, TierDefinition tier,
+        /// <summary>Builds one battle map. Both maps in this 2-map sequence reuse the
+        /// same 3 enemy archetypes/tier -- no second set of enemy art was provided, only
+        /// a different background per map (see BattleWorld.MapCount /
+        /// Tools/AssetImport/import_bench_and_maps.py).</summary>
+        static void BuildMap(int mapNumber, Dictionary<string, CharacterDefinition> characterDefs, TierDefinition tier,
             Sprite backgroundSprite, Sprite fxSheet, List<Vector4> fxRects)
         {
             // Side-view formation: a single lane, column = horizontal rank (see archetypes
             // comment above). Player ranks 0(back)-2(front); enemy ranks 3(front)-5(back) --
             // the two front-liners land adjacent (2 vs 3) so melee's 1-column range meets.
             const int lanes = 1, cols = 6;
-            var map = LoadOrCreate<MapDefinition>($"{OutDir}/Maps/Map_BattleSlice1v1Formation.asset");
+            var map = LoadOrCreate<MapDefinition>($"{OutDir}/Maps/Map_BattleSlice{mapNumber}.asset");
             map.laneCount = lanes;
             map.columnCount = cols;
             map.backgroundSprite = backgroundSprite;

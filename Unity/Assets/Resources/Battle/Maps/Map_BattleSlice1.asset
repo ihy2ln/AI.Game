@@ -1,0 +1,65 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 37cacc35311f9774a94eba1a46f1c8ff, type: 3}
+  m_Name: Map_BattleSlice1
+  m_EditorClassIdentifier: Game.Data::Game.Data.MapDefinition
+  laneCount: 1
+  columnCount: 6
+  backgroundSprite: {fileID: 21300000, guid: 80bc98fddd363c947b8b0dc8a1c90786, type: 3}
+  fxImpactSheet: {fileID: 21300000, guid: 5e41facd826431745a0f650e13a6fedb, type: 3}
+  fxImpactFrameRects:
+  - {x: 0, y: 0, z: 96, w: 96}
+  - {x: 96, y: 0, z: 96, w: 96}
+  - {x: 192, y: 0, z: 96, w: 96}
+  - {x: 288, y: 0, z: 96, w: 96}
+  - {x: 384, y: 0, z: 96, w: 96}
+  - {x: 0, y: 96, z: 96, w: 96}
+  - {x: 96, y: 96, z: 96, w: 96}
+  - {x: 192, y: 96, z: 96, w: 96}
+  - {x: 288, y: 96, z: 96, w: 96}
+  - {x: 384, y: 96, z: 96, w: 96}
+  tiles:
+  - height: 0
+    terrain: 0
+    blocked: 0
+  - height: 0
+    terrain: 0
+    blocked: 0
+  - height: 0
+    terrain: 0
+    blocked: 0
+  - height: 0
+    terrain: 0
+    blocked: 0
+  - height: 0
+    terrain: 0
+    blocked: 0
+  - height: 0
+    terrain: 0
+    blocked: 0
+  playerDeployTiles:
+  - {x: 0, y: 0}
+  - {x: 0, y: 1}
+  - {x: 0, y: 2}
+  enemies:
+  - character: {fileID: 11400000, guid: fd307a7047117a84b885aa279f5f3eea, type: 2}
+    tier: {fileID: 11400000, guid: d0486d4b322eab04b96075a2cd111436, type: 2}
+    position: {x: 0, y: 3}
+    level: 1
+  - character: {fileID: 11400000, guid: b638e8c9417c7ab49ba8a86a2240bf0f, type: 2}
+    tier: {fileID: 11400000, guid: d0486d4b322eab04b96075a2cd111436, type: 2}
+    position: {x: 0, y: 4}
+    level: 1
+  - character: {fileID: 11400000, guid: 4e43e445c3e3efd4aa7fb03cc89ffbfe, type: 2}
+    tier: {fileID: 11400000, guid: d0486d4b322eab04b96075a2cd111436, type: 2}
+    position: {x: 0, y: 5}
+    level: 1

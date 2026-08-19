@@ -12,8 +12,16 @@ namespace Game.Battle
     /// </summary>
     public class BattleWorld
     {
+        public const int MapCount = 2;
+
+        public int MapIndex { get; }
         public MapDefinition Map { get; }
         public List<BattleUnit> AllUnits { get; } = new();
+
+        /// <summary>Player reserves not currently in the fight -- sub-in/sub-out swaps
+        /// a unit here with one in AllUnits. Column is the -1 off-field sentinel until
+        /// subbed in. Enemy side has no bench in this slice.</summary>
+        public List<BattleUnit> Bench { get; } = new();
 
         public IEnumerable<BattleUnit> PlayerUnits => AllUnits.Where(u => u.Faction == Faction.Player);
         public IEnumerable<BattleUnit> EnemyUnits => AllUnits.Where(u => u.Faction == Faction.Enemy);
@@ -21,8 +29,11 @@ namespace Game.Battle
         public bool PlayerDefeated => PlayerUnits.Any() && PlayerUnits.All(u => !u.IsAlive);
         public bool EnemyDefeated => EnemyUnits.Any() && EnemyUnits.All(u => !u.IsAlive);
         public bool IsOver => PlayerDefeated || EnemyDefeated;
+        public bool HasNextMap => MapIndex < MapCount - 1;
 
         public bool LoadedOk { get; }
+
+        public const int BenchColumn = -1;
 
         // Mirrors the enemy formation built by BattleAssetBuilder: front-line melee
         // adjacent to the enemy's front line (column 2 vs 3), support/ranged behind.
@@ -33,9 +44,18 @@ namespace Game.Battle
             ("player_melee", 2),
         };
 
-        public BattleWorld()
+        static readonly string[] BenchRoster = { "player_bench_melee", "player_bench_ranged", "player_bench_support" };
+
+        /// <param name="mapIndex">0-based; picks Map_BattleSlice{mapIndex+1}.</param>
+        /// <param name="carryOverPlayer">If supplied, these exact BattleUnit instances (with
+        /// their current HP/MP) are reused for the player side instead of rolling fresh ones
+        /// -- lets a party carry wounds from a previous map into the next.</param>
+        /// <param name="carryOverBench">Same, for the bench.</param>
+        public BattleWorld(int mapIndex = 0, IReadOnlyList<BattleUnit> carryOverPlayer = null,
+            IReadOnlyList<BattleUnit> carryOverBench = null)
         {
-            Map = Resources.Load<MapDefinition>("Battle/Maps/Map_BattleSlice1v1Formation");
+            MapIndex = Mathf.Clamp(mapIndex, 0, MapCount - 1);
+            Map = Resources.Load<MapDefinition>($"Battle/Maps/Map_BattleSlice{MapIndex + 1}");
             var tier = Resources.Load<TierDefinition>("Battle/Tiers/Tier_Standard");
 
             if (Map == null || tier == null)
@@ -47,18 +67,48 @@ namespace Game.Battle
             }
 
             int seed = 0;
-            var noRollPool = new List<SkillDefinition>(); // only standardSkill is used in this slice
+            var noRollPool = new List<SkillDefinition>(); // only standardSkill/secondarySkill are used in this slice
 
-            foreach (var (unitId, column) in PlayerFormation)
+            if (carryOverPlayer != null)
             {
-                var def = Resources.Load<CharacterDefinition>($"Battle/Characters/Char_{unitId}");
-                if (def == null)
+                // Reuse the same BattleUnit objects (preserves CurrentHp/Mp) -- drop the
+                // dead, reassign columns 0..2 in prior front-to-back order.
+                var survivors = carryOverPlayer.Where(u => u.IsAlive).OrderBy(u => u.Column).ToList();
+                for (int i = 0; i < survivors.Count; i++) survivors[i].Column = i;
+                AllUnits.AddRange(survivors);
+            }
+            else
+            {
+                foreach (var (unitId, column) in PlayerFormation)
                 {
-                    Debug.LogWarning($"[AI.Game] Missing CharacterDefinition for {unitId}");
-                    continue;
+                    var def = Resources.Load<CharacterDefinition>($"Battle/Characters/Char_{unitId}");
+                    if (def == null)
+                    {
+                        Debug.LogWarning($"[AI.Game] Missing CharacterDefinition for {unitId}");
+                        continue;
+                    }
+                    var instance = CharacterFactory.Create(def, tier, noRollPool, seed++);
+                    AllUnits.Add(new BattleUnit(def, instance, Faction.Player, column, facingRight: true));
                 }
-                var instance = CharacterFactory.Create(def, tier, noRollPool, seed++);
-                AllUnits.Add(new BattleUnit(def, instance, Faction.Player, column, facingRight: true));
+            }
+
+            if (carryOverBench != null)
+            {
+                Bench.AddRange(carryOverBench);
+            }
+            else
+            {
+                foreach (var unitId in BenchRoster)
+                {
+                    var def = Resources.Load<CharacterDefinition>($"Battle/Characters/Char_{unitId}");
+                    if (def == null)
+                    {
+                        Debug.LogWarning($"[AI.Game] Missing CharacterDefinition for {unitId}");
+                        continue;
+                    }
+                    var instance = CharacterFactory.Create(def, tier, noRollPool, seed++);
+                    Bench.Add(new BattleUnit(def, instance, Faction.Player, BenchColumn, facingRight: true));
+                }
             }
 
             foreach (var placement in Map.enemies)
