@@ -47,6 +47,18 @@ namespace Game.Data
             + "BattleController.ResolveAction branches on this within the targetsAllies path.")]
         public bool restoresMana;
 
+        [Header("Status effect (optional, M13)")]
+        [Tooltip("None = doesn't inflict/grant anything. Applied to every unit in "
+            + "hitTargets alongside whatever this skill's main effect is (damage/heal/"
+            + "mana-restore) -- see BattleController.ResolveAction.")]
+        public StatusEffectType inflictsStatus = StatusEffectType.None;
+
+        [Tooltip("Flat HP/turn for Poison/Regen; fractional multiplier (0.2=20%) for "
+            + "Attack/DefenseUp/Down; unused for Stun.")]
+        public float statusMagnitude;
+
+        [Min(0)] public int statusDuration;
+
         [Header("Presentation")]
         [Tooltip("Key into the character's ClipSet.")]
         public string clipKey;

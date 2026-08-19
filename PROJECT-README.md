@@ -283,14 +283,88 @@ via automation.
      asserting a real `ComputeManaRestore` value against Linnet's actual base stats,
      plus the Support archetype's expected Skill Move count moving from 3 to 4). All
      pure C#, all safe headless. `BattleAssetBuilder.ContentVersion` bumped to 4.
+10. **Battle-carried potions, a real status-effect system, per-turn MP regen -- M13.**
+    Direction from the project owner across five areas at once; here's what shipped
+    against each:
+    - **3 battle potion slots (Hp/Mp/Multi), F-SSS ranked, up to 99 each.** New
+      `BattleInventory` (`Scripts/Battle/BattleInventory.cs`) -- exactly 3 fixed slots,
+      not a general inventory system. New `PotionDefinition` ScriptableObject
+      (`Scripts/Data/Economy/`) reuses the existing `Tier` enum (F..SSS) for rank rather
+      than inventing a parallel scale. `PotionCalculator.Potency(Tier)` is a flat
+      restore-amount table per rank (20 at F up to 300 at SSS) -- arbitrary numbers, not
+      a tuned balance pass, same convention as every other number this session. A Multi
+      potion restores the *same* amount to both HP and MP rather than a split/reduced
+      figure -- simplest rule, worth revisiting once potions have a real economy to
+      balance against. `BattleWorld` owns `Inventory`, seeds a placeholder 5-of-each
+      C-rank stock on a fresh battle (`SeedPlaceholderInventory` -- there's no shop/farm
+      system yet to source real starting stock from), and carries it through map 1→2
+      the same way HP/bench do. New manual-mode action: a 5th icon, **I**, tap to open a
+      popup listing all 3 slots (name/rank/count, greyed at 0), tap one, then pick a
+      target the same way Heal does (any living ally, not just ones missing HP/MP --
+      matches how Heal already lets you "waste" it on a full-HP unit). Free (no MP
+      cost, it's a physical item) but costs the turn. `BattleHistory.Capture/Undo/Redo`
+      gained an optional `BattleInventory` parameter (defaults to null, so every
+      pre-existing call site including every test keeps compiling unchanged) --
+      without it, Undo after using a potion would restore HP/MP but leave the count
+      spent, an exploitable free-duplicate bug. `BattleController` always passes
+      `World.Inventory`, so it's covered in the real game.
+    - **A real status-effect system, standard JRPG shape.** New `StatusEffectType` enum
+      (`AttackUp/Down`, `DefenseUp/Down`, `Poison`, `Regen`, `Stun`) and
+      `StatusEffectInstance` (type + magnitude + remaining turns). `BattleUnit` owns a
+      `StatusEffects` list, `ApplyStatus` (refreshes an existing effect of the same type
+      in place rather than stacking a second instance -- standard convention, and avoids
+      unbounded stacking from repeated casts), `AttackMultiplier`/`DefenseMultiplier`
+      (net Up minus Down, folded into `DamageCalculator.ComputeDamage`'s offense/defense
+      stats), and `TickStatusEffects` (applies Poison/Regen's flat HP tick, decrements
+      every effect's clock, drops expired ones). Ticking happens once at the start of
+      the *affected unit's own turn* -- not globally per round -- in
+      `BattleController.RunBattle`, alongside the new passive MP regen (same
+      per-turn hook point). `IsStunned` is checked *before* ticking so a 1-turn Stun
+      skips exactly one turn (checked pre-tick → skip → tick counts 1→0 and removes
+      it → next turn acts normally); a unit poisoned to death on its own tick gets the
+      same death bookkeeping (`SyncDefeated`, `Formation.Compact`) a combat kill gets,
+      just without the animated reflow. `SkillDefinition` gained
+      `inflictsStatus`/`statusMagnitude`/`statusDuration`, applied to every unit in
+      `hitTargets` up front in `ResolveAction` (before the heal/mana/damage branches,
+      since a status effect isn't tied to which of those actually fires). **Retrofit
+      onto 5 existing Skill Moves**, additive on top of their already-tuned power/mpCost
+      (no rebalancing): Second Wind and Focus Heal also grant Regen (10 HP/turn, 2
+      turns); Power Strike also applies Defense Down (-20%, 2 turns); Snipe also applies
+      Attack Down (-20%, 2 turns); Barrage also applies Stun (1 turn) to everyone it
+      hits -- a full-team AoE stagger, clearly the strongest of the five, flagged as
+      worth a second look once there's more content to compare it against. Poison
+      exists in the system (implemented, tested) but isn't authored onto any skill yet
+      -- ready for whichever future skill wants it. A small HUD addition: each unit's
+      roster readout now shows abbreviated status tags with turns remaining (`PSN(2)`,
+      `ATK-(1)`, `DEF+(3)`) under its MP bar.
+    - **Per-turn passive MP regen**, on top of M12's existing BA-specific trickle:
+      `PassiveMpRegenPerTurn = 3`, applied to every unit at the start of its own turn
+      regardless of chosen action (even a skipped/stunned one) or faction. Per the
+      project owner's framing: small per tick, but real over a long battle.
+    - **FMV clips: explicitly deferred**, per the project owner -- "worry about getting
+      a lot of clips/assets later after the foundation is laid out." No FMV work this
+      session; noted for whenever that's revisited.
+    - **Android-first platform priority, stated explicitly for the first time**: must be
+      fully playable start-to-finish on Android, then Windows, then iPhone last (not
+      started). See "Known gaps" -- this elevates on-device Android verification from
+      "whenever adb is available" to the top of the priority list, still blocked on
+      `adb` access this session.
+
+    New tests: `StatusEffectTests.cs` (8), `PotionTests.cs` (4), plus 2 more in
+    `BattleAssetContentTests.cs` and 1 more in `BattleHistoryTests.cs` (inventory
+    undo/redo). All pure C#, all safe headless -- 53 total, 51 passing as of this
+    write-up (the 2 new asset-content tests fail until the next interactive rebuild
+    writes the potion assets + status-effect fields to disk, same pattern as every
+    prior content addition this project has made). `BattleAssetBuilder.ContentVersion`
+    bumped to 5.
 
 ## Roster
 
 | Unit | Role | Faction | BA (free) | Skill Moves (mana, tap SM) |
 |---|---|---|---|---|
-| **Kestrel** | Melee | Player | Melee Basic Attack, 1 col | Second Wind (self-heal, 30MP) / Rally (heal ally, 25MP) / Power Strike (heavy hit, 35MP) |
-| **Sable** | Ranged | Player | Ranged Basic Attack, any col | Volley (3-wide AoE, 25MP) / Snipe (heavy hit, 30MP) / Barrage (full-team AoE, 45MP) |
-| **Linnet** | Support | Player | Support Strike (low power attack) | Heal (20MP) / Mass Heal (AoE heal, 35MP) / Focus Heal (big heal, 30MP) / Mana Spring (restore ally MP, 15MP) |
+| **Kestrel** | Melee | Player | Melee Basic Attack, 1 col | Second Wind (self-heal + Regen, 30MP) / Rally (heal ally, 25MP) / Power Strike (heavy hit + Defense Down, 35MP) |
+| **Sable** | Ranged | Player | Ranged Basic Attack, any col | Volley (3-wide AoE, 25MP) / Snipe (heavy hit + Attack Down, 30MP) / Barrage (full-team AoE + Stun, 45MP) |
+| **Linnet** | Support | Player | Support Strike (low power attack) | Heal (20MP) / Mass Heal (AoE heal, 35MP) / Focus Heal (big heal + Regen, 30MP) / Mana Spring (restore ally MP, 15MP) |
 | **Husk** | Melee | Enemy | same as Kestrel's archetype | same as Kestrel's archetype |
 | **Warden** | Ranged | Enemy | same as Sable's archetype | same as Sable's archetype |
 | **Stinger** | Support | Enemy | same as Linnet's archetype | same as Linnet's archetype |
@@ -300,16 +374,23 @@ action, same archetype stats/BA/Skill Moves as their active counterpart, distinc
 **Thorne** (Melee, reskin of Kestrel's archetype), **Reed** (Ranged, reskin of Sable's),
 **Vesper** (Support, reskin of Linnet's).
 
-Skill Move content is heal/damage primitives only (no status-effect system yet -- an
-explicit scope decision, see item 7 above). All 10 non-BA skills, plus the relocated
-Heal and M12's Mana Spring, live in `CharacterDefinition.skillMoves`; `standardSkill`
-is always BA.
+All 10 non-BA skills, plus the relocated Heal and M12's Mana Spring, live in
+`CharacterDefinition.skillMoves`; `standardSkill` is always BA. 5 of the 10 also carry
+a status effect on top of their original heal/damage (M13, see item 10 above) --
+heal/damage primitives *plus* status effects now, not primitives-only.
 
-**MP has a first-pass economy now (M12), not a tuned one.** Sources: a small trickle
-(+4) from a unit's own BA, 25%-50% of missing MP restored per unit between maps 1 and
-2 (HP still doesn't recover there -- see `BattleWorld`'s carry-over doc), and Mana
-Spring as an active, targeted top-up. There's still no per-turn passive regen and no
-potion/item system (no inventory exists in this slice at all) -- see "Known gaps."
+**MP economy (M12+M13), not a tuned one.** Sources: a small trickle (+4) from a unit's
+own BA, a smaller passive trickle (+3) every turn regardless of action, 25%-50% of
+missing MP restored per unit between maps 1 and 2 (HP still doesn't recover there --
+see `BattleWorld`'s carry-over doc), Mana Spring as an active targeted top-up, and now
+an MP potion (Item action). Still no potion/item *economy* (no shop/farm system to
+source real stock, drop rates, or prices from) -- see "Known gaps."
+
+**Battle potions (M13).** 3 fixed slots -- Hp/Mp/Multi -- each holding a ranked
+(F-SSS) `PotionDefinition` stacked up to 99. A fresh battle seeds a placeholder 5 of
+each C-rank potion (`BattleWorld.SeedPlaceholderInventory`); carries over between maps
+1 and 2. Tap **I** in manual mode, pick a slot, pick a target (any living ally). Free,
+costs the turn.
 
 ## Milestones — all done
 
@@ -328,6 +409,7 @@ potion/item system (no inventory exists in this slice at all) -- see "Known gaps
 | M10 | Camera bug fix, Skill Move system (9 skills), compact action UI, melee movement | *(not yet tagged)* |
 | M11 | Skill Moves built into the assets, content guard + asset-level tests, SM tap, duplicate-label fix | *(not yet tagged)* |
 | M12 | MP economy (BA trickle, between-map recovery, Mana Spring), FMV chroma-key components, code-based Skill Move tests | *(not yet tagged)* |
+| M13 | Battle potions (3 slots, F-SSS rank), standard JRPG status effects, per-turn MP regen, Android-first platform priority | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -340,11 +422,12 @@ precedent: commit + docs update, no snapshot/zip.
 
 `T` toggle auto/manual mode · `L` open/close the turn log · `Esc` pause ·
 `Ctrl+Z`/`Ctrl+Y` undo/redo last turn · `R` restart after the battle ends · `?` keybind
-legend. Manual mode: a player unit's turn opens a small 4-icon menu under their feet,
-all four tapped -- **BA** (free basic attack), **SM** (opens the mana-cost Skill Move
-list; tap again to close it), **R** (Reposition), **S** (Sub) -- then click a
-highlighted target on the field (BA/SM/Reposition) or pick from the popup (SM's list,
-Sub's bench).
+legend. Manual mode: a player unit's turn opens a small 5-icon menu under their feet,
+all five tapped -- **BA** (free basic attack), **SM** (opens the mana-cost Skill Move
+list; tap again to close it), **R** (Reposition), **S** (Sub), **I** (opens the potion
+list -- Hp/Mp/Multi, tap again to close it) -- then click a highlighted target on the
+field (BA/SM/Reposition/Item) or pick from the popup (SM's list, Sub's bench, Item's
+potion slots).
 
 ## How to run it
 
@@ -440,8 +523,17 @@ Sub's bench).
   `S:\AI\Game\play\android\` instead of into this repo (see "How to run it"). If any
   tooling/scripts/notes still reference the old `S:\AI\Game\AI.Game` path, they're
   stale — this file and the wiki are current as of the move.
-- **No `adb` on this machine** — M5's on-device install/verification is genuinely
-  blocked here, not skipped out of laziness. Needs a different machine/session.
+- **No `adb` on this machine — now the single biggest blocker on the project's stated
+  priority order.** M13 established explicitly: the game must be fully playable
+  start-to-finish on Android first, Windows second, iPhone third (not started at all).
+  Everything built so far (IMGUI HUD, tap-only gestures since M11's SM/M13's Item
+  popups, no hold/right-click/hover-dependent interaction anywhere) should translate to
+  touch reasonably well by design, but "should translate" is exactly the kind of claim
+  this project has learned not to trust without someone actually touching a real
+  device — M10's camera bug and the M10/M11 Skill Move gap both hid behind confident-
+  looking code that had never actually been run the way a player would run it. Needs a
+  different machine/session with Android platform tools, or the project owner
+  installing them here.
 - **GitHub wiki is unblocked** (was blocked through M9 — GitHub only provisions a
   repo's wiki git backend after a page is saved once through the web UI, with no
   API/git-push way around it; the project owner has since created that first page). The
@@ -513,25 +605,30 @@ Sub's bench).
 
 ## Natural next steps, roughly in priority order
 
-1. **Run the full test suite once Unity is closed** to confirm both the M12 rebuild
-   (38/38 expected, including the new `ClipMetadataTests`) and the `impactFrames`
-   hand-fix actually
-   hold -- neither has been verified headlessly yet as of the fix landing.
-2. **A potion/item system**, if the project owner wants the third MP-recovery source
-   from M12's design to actually exist -- needs an inventory concept this slice doesn't
-   have at all yet, so it's a bigger lift than the other two economy pieces were.
-3. **A per-turn passive MP regen tick**, if between-map recovery alone proves too
-   sparse in practice once the project owner plays a few battles.
-4. Choose/build final FMV clip assets (Unity Asset Store base or new ComfyUI
-   generations, per the project owner's plan) once the components above are solid --
-   the plumbing is ready, only the content is placeholder. Now that `impactFrames` is
-   real data, frame-accurate impact sync (flash/FX synced to the clip's own hit frame
-   instead of firing at clip start) is worth building too.
-5. On-device Android verification, whenever a session has `adb` access.
-6. Consider a real status-effect system if future Skill Moves need to go beyond
-   heal/damage (buffs, shields, taunt) — explicitly deferred in M10, see item 7
-   under "What changed."
-7. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
+1. **On-device Android verification** — see "Known gaps." Now the top of the list,
+   not a someday item: the project owner's explicit priority is Android first, Windows
+   second, iPhone third. Blocked on `adb` access.
+2. **Rebuild in the interactive Editor and re-run the tests.** M13's content (3 potion
+   assets, 5 status-effect retrofits) needs the same `BattleContentGuard` auto-rebuild
+   every prior content addition has -- open the Editor once, then headless `-runTests`
+   should go 53/53 instead of 51/53.
+3. **Play the new M13 systems.** Nobody has watched a Stun actually skip a turn, a
+   Poison tick someone down, or used an Item in a live battle yet -- all verified by
+   code-based tests per the project owner's stated preference, none by interactive play.
+4. **A real potion/item economy** (drop rates, a shop, farm integration) -- M13 shipped
+   the mechanic with a hardcoded placeholder stock (5 of each C-rank potion every fresh
+   battle) because no economy system exists yet to source real starting inventory from.
+5. Choose/build final FMV clip assets (Unity Asset Store base or new ComfyUI
+   generations) -- explicitly deferred by the project owner until the foundation above
+   is laid out further. The components are ready (M12) whenever this comes back up.
+6. Frame-accurate impact-FX sync using the now-correct `impactFrames` data (M12's fix) --
+   currently `PlayImpactBeat` just uses the clip's own runtime as a flat hold, not
+   synced to the clip's actual hit frame.
+7. Consider extending the status-effect system if content wants to go beyond the 6
+   types already built (e.g. a Taunt/aggro mechanic, shields, cleanse effects) -- the
+   core tick/apply/multiplier plumbing (M13) is general enough to add types to without
+   restructuring it.
+8. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
    reserves, no save/persistence. FOUNDATION.md's broader systems (tier/fusion, gacha,
    farm/town economy) are designed but not connected to this battle system yet —
    that's the actual "rest of the game," this slice only proves the battle screen works.

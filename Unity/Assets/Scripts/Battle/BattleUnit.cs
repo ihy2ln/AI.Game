@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using Game.Data;
 
@@ -19,6 +21,8 @@ namespace Game.Battle
         public int Column;
         public int CurrentHp;
         public int CurrentMp;
+
+        public readonly List<StatusEffectInstance> StatusEffects = new();
 
         public bool IsAlive => CurrentHp > 0;
         public StatBlock Stats => Instance.EffectiveStats(Definition);
@@ -58,6 +62,50 @@ namespace Game.Battle
             if (missing <= 0) return;
             float fraction = UnityEngine.Random.Range(0.25f, 0.5f);
             RestoreMp(Mathf.RoundToInt(missing * fraction));
+        }
+
+        // -- status effects (M13) --------------------------------------------------
+
+        public bool IsStunned => StatusEffects.Any(s => s.Type == StatusEffectType.Stun);
+
+        /// <summary>Sum of AttackUp minus sum of AttackDown, as a multiplier against
+        /// DamageCalculator's offense stat (1.0 = no effect). Read fresh every time
+        /// rather than cached -- effects change turn to turn and there's no dirty-flag
+        /// plumbing to invalidate a cache correctly.</summary>
+        public float AttackMultiplier => 1f + NetMagnitude(StatusEffectType.AttackUp) - NetMagnitude(StatusEffectType.AttackDown);
+
+        /// <summary>Same shape as AttackMultiplier, against DamageCalculator's defense stat.</summary>
+        public float DefenseMultiplier => 1f + NetMagnitude(StatusEffectType.DefenseUp) - NetMagnitude(StatusEffectType.DefenseDown);
+
+        float NetMagnitude(StatusEffectType type) => StatusEffects.Where(s => s.Type == type).Sum(s => s.Magnitude);
+
+        /// <summary>Applies (or refreshes) a status effect. Refreshing in place rather
+        /// than stacking a second instance is the standard JRPG convention -- reapplying
+        /// Poison resets its clock and magnitude instead of double-ticking -- and avoids
+        /// unbounded stacking from repeated casts of the same skill.</summary>
+        public void ApplyStatus(StatusEffectType type, float magnitude, int turns)
+        {
+            if (type == StatusEffectType.None) return;
+            var existing = StatusEffects.Find(s => s.Type == type);
+            if (existing != null) { existing.Magnitude = magnitude; existing.RemainingTurns = turns; return; }
+            StatusEffects.Add(new StatusEffectInstance { Type = type, Magnitude = magnitude, RemainingTurns = turns });
+        }
+
+        /// <summary>Called once at the start of this unit's own turn (BattleController
+        /// .RunBattle) -- applies Poison/Regen's flat HP tick, then counts every active
+        /// effect down by one turn and drops any that just expired. Whether the unit was
+        /// stunned is a separate question the caller must check *before* calling this
+        /// (IsStunned, evaluated against the pre-tick state) -- see RunBattle for why a
+        /// 1-turn Stun needs to skip exactly one turn, not zero or two.</summary>
+        public void TickStatusEffects()
+        {
+            foreach (var effect in StatusEffects)
+            {
+                if (effect.Type == StatusEffectType.Poison) ApplyDamage(Mathf.RoundToInt(effect.Magnitude));
+                else if (effect.Type == StatusEffectType.Regen) ApplyHeal(Mathf.RoundToInt(effect.Magnitude));
+                effect.RemainingTurns--;
+            }
+            StatusEffects.RemoveAll(s => s.RemainingTurns <= 0);
         }
     }
 }

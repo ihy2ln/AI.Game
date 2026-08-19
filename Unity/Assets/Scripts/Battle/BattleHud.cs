@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using Game.Data;
 
@@ -26,6 +27,9 @@ namespace Game.Battle
         // so SM being the one exception was the problem, not the timing.
         bool _showSkillList;
 
+        // Same tap-to-toggle pattern as _showSkillList, for the "I" (Item) icon (M13).
+        bool _showItemList;
+
         public void Init(BattleController ctrl, Camera cam, BattleVisuals visuals, bool logOpenByDefault)
         {
             _ctrl = ctrl;
@@ -43,9 +47,13 @@ namespace Game.Battle
                 if (_showLog) _logScroll = new Vector2(0, float.MaxValue);
             }
 
-            // The skill list only belongs to a live action choice -- close it as soon as
-            // the turn moves on to target selection or to the next unit.
-            if (_ctrl == null || _ctrl.Phase != ActionPhase.ChooseAction) _showSkillList = false;
+            // The skill/item lists only belong to a live action choice -- close them as
+            // soon as the turn moves on to target selection or to the next unit.
+            if (_ctrl == null || _ctrl.Phase != ActionPhase.ChooseAction)
+            {
+                _showSkillList = false;
+                _showItemList = false;
+            }
         }
 
         void EnsureStyles()
@@ -156,7 +164,7 @@ namespace Game.Battle
                 "Ctrl+Y -- redo turn",
                 "R -- restart (after battle ends)",
                 "Click -- choose a highlighted target",
-                "BA/SM/R/S -- tap. SM opens the skill list; tap it again to close",
+                "BA/SM/R/S/I -- tap. SM/I open a list; tap again to close",
             };
             float y = panel.y + 32;
             foreach (var line in lines)
@@ -208,8 +216,9 @@ namespace Game.Battle
             return count;
         }
 
-        // Compact per-unit roster readout: name, a thin HP bar, a thinner MP bar below it.
-        const float BarWidth = 160f, HpHeight = 11f, MpHeight = 6f, NameHeight = 13f, BarGap = 2f, UnitGap = 9f;
+        // Compact per-unit roster readout: name, a thin HP bar, a thinner MP bar below it,
+        // and (M13) a status-tag line squeezed into the gap before the next unit.
+        const float BarWidth = 160f, HpHeight = 11f, MpHeight = 6f, NameHeight = 13f, BarGap = 2f, UnitGap = 20f;
 
         void DrawRoster(IEnumerable<BattleUnit> units, float x, float y, bool rightAligned)
         {
@@ -238,6 +247,34 @@ namespace Game.Battle
             GUI.Box(mpRect, GUIContent.none);
             float mpPct = unit.MaxMp > 0 ? (float)unit.CurrentMp / unit.MaxMp : 0f;
             DrawBarFill(mpRect, mpPct, rightAligned, new Color(0.2f, 0.45f, 1f));
+            y += MpHeight + 1f;
+
+            if (unit.StatusEffects.Count > 0)
+            {
+                string tags = string.Join(" ", unit.StatusEffects.Select(StatusTag));
+                var tagStyle = new GUIStyle(_barLabel) { alignment = rightAligned ? TextAnchor.UpperRight : TextAnchor.UpperLeft };
+                GUI.Label(new Rect(x, y, BarWidth, UnitGap - 2f), tags, tagStyle);
+            }
+        }
+
+        /// <summary>Short readout for the roster status-tag line -- type abbreviation
+        /// plus turns remaining, e.g. "PSN(2)", "ATK-(1)". Not the popup's job to explain
+        /// the full effect, just to show at a glance that something is active and when it
+        /// runs out.</summary>
+        static string StatusTag(StatusEffectInstance effect)
+        {
+            string abbrev = effect.Type switch
+            {
+                StatusEffectType.AttackUp => "ATK+",
+                StatusEffectType.AttackDown => "ATK-",
+                StatusEffectType.DefenseUp => "DEF+",
+                StatusEffectType.DefenseDown => "DEF-",
+                StatusEffectType.Poison => "PSN",
+                StatusEffectType.Regen => "REGEN",
+                StatusEffectType.Stun => "STUN",
+                _ => effect.Type.ToString(),
+            };
+            return $"{abbrev}({effect.RemainingTurns})";
         }
 
         static void DrawBarFill(Rect rect, float pct, bool rightAligned, Color color)
@@ -282,7 +319,7 @@ namespace Game.Battle
             }
         }
 
-        // Small icon bar (BA/SM/R/S) anchored at the acting unit's feet, plus its name
+        // Small icon bar (BA/SM/R/S/I) anchored at the acting unit's feet, plus its name
         // label just above the icons -- replaces the old full-width centred panel.
         const float IconSize = 32f, IconGap = 4f;
 
@@ -324,8 +361,8 @@ namespace Game.Battle
             var basicAttack = _ctrl.BasicAttackSkill(actor);
             var skillMoveOptions = _ctrl.SkillMoveOptions(actor);
 
-            var labels = new[] { "BA", "SM", "R", "S" };
-            var enabled = new[] { basicAttack != null, skillMoveOptions.Count > 0, _ctrl.CanReposition, _ctrl.CanSub };
+            var labels = new[] { "BA", "SM", "R", "S", "I" };
+            var enabled = new[] { basicAttack != null, skillMoveOptions.Count > 0, _ctrl.CanReposition, _ctrl.CanSub, _ctrl.CanUseItem };
 
             float totalW = labels.Length * IconSize + (labels.Length - 1) * IconGap;
             float startX = ClampedLeftX(anchorX, totalW);
@@ -344,14 +381,16 @@ namespace Game.Battle
                 {
                     case "BA": _ctrl.ChooseSkill(basicAttack); break;
                     // Toggle, so a second tap backs out of the list without committing to
-                    // a skill -- there's no other way to dismiss it.
+                    // a skill/item -- there's no other way to dismiss either popup.
                     case "SM": _showSkillList = !_showSkillList; break;
                     case "R": _ctrl.ChooseReposition(); break;
                     case "S": _ctrl.OpenBenchMenu(); break;
+                    case "I": _showItemList = !_showItemList; break;
                 }
             }
 
             if (_showSkillList) DrawSkillListPopup(actor, skillMoveOptions, startX + totalW / 2f, y);
+            if (_showItemList) DrawItemListPopup(startX + totalW / 2f, y);
         }
 
         void DrawSkillListPopup(BattleUnit actor, IReadOnlyList<SkillDefinition> options, float anchorX, float iconsY)
@@ -379,6 +418,38 @@ namespace Game.Battle
                 {
                     _ctrl.ChooseSkill(skill);
                     _showSkillList = false;
+                }
+                GUI.enabled = true;
+                y += btnH + 4f;
+            }
+        }
+
+        static readonly PotionKind[] AllPotionKinds = { PotionKind.Hp, PotionKind.Mp, PotionKind.Multi };
+
+        /// <summary>Mirrors DrawSkillListPopup exactly -- 3 fixed rows (Hp/Mp/Multi,
+        /// always all 3, unlike the skill list's variable count) showing the slot's
+        /// potion name, rank, and remaining count; greyed out at 0.</summary>
+        void DrawItemListPopup(float anchorX, float iconsY)
+        {
+            const float panelW = 170f, btnH = 26f;
+            float panelH = AllPotionKinds.Length * (btnH + 4f) + 8f;
+            float panelLeft = ClampedLeftX(anchorX, panelW);
+            float panelTop = Mathf.Max(4f, iconsY - panelH - 8f);
+            var panel = new Rect(panelLeft, panelTop, panelW, panelH);
+            GUI.Box(panel, GUIContent.none);
+
+            float y = panel.y + 4f;
+            foreach (var kind in AllPotionKinds)
+            {
+                var slot = _ctrl.Inventory.Slot(kind);
+                string name = slot.Potion != null ? slot.Potion.displayName : $"{kind} Potion";
+                string label = $"{name} [{(slot.Potion != null ? slot.Potion.rank.ToString() : "?")}] x{slot.Count}";
+
+                GUI.enabled = slot.IsUsable;
+                if (GUI.Button(new Rect(panel.x + 4, y, panelW - 8, btnH), label, _smallBtn))
+                {
+                    _ctrl.ChooseItem(kind);
+                    _showItemList = false;
                 }
                 GUI.enabled = true;
                 y += btnH + 4f;

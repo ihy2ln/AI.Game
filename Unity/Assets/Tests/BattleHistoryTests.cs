@@ -127,5 +127,33 @@ namespace Game.Tests
             Assert.AreEqual(2, active.Column);
             Assert.AreEqual(BattleWorld.BenchColumn, benched.Column);
         }
+
+        /// <summary>M13: without passing `inventory` through, Undo after using a potion
+        /// would leave the roster's HP/MP restored but the potion count still spent --
+        /// exploitable as a free duplicate via Undo/Redo/act-again. Capture/Undo/Redo's
+        /// `inventory` parameter is optional (defaults to null) specifically so this is
+        /// the only test that needs to pass it; every other test above is unaffected.</summary>
+        [Test]
+        public void Undo_RestoresInventoryCounts()
+        {
+            var log = new BattleLog();
+            var unit = MakeUnit(100);
+            var units = new List<BattleUnit> { unit };
+            var history = new BattleHistory();
+            var inventory = new BattleInventory();
+            inventory.Hp.Count = 5;
+
+            history.Capture(units, EmptyBench, log, inventory); // point 0: 5 potions
+
+            inventory.Hp.Count = 4; // "used" one
+            log.Add(1, "used a potion");
+            history.Capture(units, EmptyBench, log, inventory); // point 1: 4 potions
+
+            history.Undo(units, EmptyBench, log, inventory);
+            Assert.AreEqual(5, inventory.Hp.Count);
+
+            history.Redo(units, EmptyBench, log, inventory);
+            Assert.AreEqual(4, inventory.Hp.Count);
+        }
     }
 }

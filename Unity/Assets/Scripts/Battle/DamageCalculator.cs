@@ -19,8 +19,12 @@ namespace Game.Battle
             var atkStats = attacker.Stats;
             var defStats = target.Stats;
 
-            float offense = skill.usesMagic ? atkStats.magic : atkStats.attack;
-            float defense = skill.usesMagic ? defStats.resistance : defStats.defense;
+            // AttackMultiplier/DefenseMultiplier fold in any active AttackUp/Down or
+            // DefenseUp/Down status effects (M13) -- both default to 1.0 (no effect) on
+            // a unit with nothing active, so this is a no-op change for anyone without
+            // status effects.
+            float offense = (skill.usesMagic ? atkStats.magic : atkStats.attack) * attacker.AttackMultiplier;
+            float defense = (skill.usesMagic ? defStats.resistance : defStats.defense) * target.DefenseMultiplier;
 
             float raw = skill.power * offense - defense;
 

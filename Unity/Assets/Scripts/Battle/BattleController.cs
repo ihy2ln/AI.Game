@@ -18,7 +18,7 @@ namespace Game.Battle
     public enum BattleOutcome { InProgress, PlayerVictory, EnemyVictory }
 
     /// <summary>Which top-level action a manual-mode player turn resolved to.</summary>
-    public enum ChosenAction { None, Skill, Reposition, Sub }
+    public enum ChosenAction { None, Skill, Reposition, Sub, Item }
 
     /// <summary>Drives what BattleHud shows during a manual-mode player turn.</summary>
     public enum ActionPhase { Idle, ChooseAction, ChooseBench, ChooseTarget }
@@ -52,6 +52,8 @@ namespace Game.Battle
         public IReadOnlyList<BattleUnit> BenchOptions => World.Bench;
         public bool CanReposition => _repositionOptions.Count > 0;
         public bool CanSub => World.Bench.Count > 0;
+        public bool CanUseItem => World.Inventory.HasAnyUsable;
+        public BattleInventory Inventory => World.Inventory;
 
         public bool CanUndo => _history.CanUndo;
         public bool CanRedo => _history.CanRedo;
@@ -70,6 +72,7 @@ namespace Game.Battle
         ChosenAction _chosenAction;
         SkillDefinition _chosenSkill;
         BattleUnit _chosenSubIncoming;
+        PotionKind? _chosenItemKind;
         const float PreActionDelaySeconds = 0.35f;
         const float ImpactHoldSeconds = 0.5f;
 
@@ -78,6 +81,13 @@ namespace Game.Battle
         /// unit.Definition.standardSkill) grants this, so it can't be farmed by a Skill
         /// Move that happens to cost 0 MP (e.g. the dev-tuning MpCostMultiplier slider at 0x).</summary>
         const int BasicAttackMpRegen = 4;
+
+        /// <summary>Passive per-turn trickle (M13), on top of the BA-specific bonus above
+        /// -- deliberately smaller than BasicAttackMpRegen so it doesn't trivialize that
+        /// bonus, but the project owner's own framing is the point: small per turn adds
+        /// up over a long battle. Applies to every unit's own turn regardless of what
+        /// action they take (even a skipped/stunned one) or which faction they're on.</summary>
+        const int PassiveMpRegenPerTurn = 3;
 
         public void Init(BattleWorld world, BattleVisuals visuals, Camera cam, BattleSettings settings)
         {
@@ -93,7 +103,7 @@ namespace Game.Battle
             _turnOrder = new TurnOrder(world.AllUnits);
             if (!world.LoadedOk) return;
 
-            _history.Capture(World.AllUnits, World.Bench, Log);
+            _history.Capture(World.AllUnits, World.Bench, Log, World.Inventory);
             _runCoroutine = StartCoroutine(RunBattle());
         }
 
@@ -141,14 +151,14 @@ namespace Game.Battle
         public void Undo()
         {
             if (!_history.CanUndo) return;
-            _history.Undo(World.AllUnits, World.Bench, Log);
+            _history.Undo(World.AllUnits, World.Bench, Log, World.Inventory);
             ResumeFromHistory();
         }
 
         public void Redo()
         {
             if (!_history.CanRedo) return;
-            _history.Redo(World.AllUnits, World.Bench, Log);
+            _history.Redo(World.AllUnits, World.Bench, Log, World.Inventory);
             ResumeFromHistory();
         }
 
@@ -216,6 +226,17 @@ namespace Game.Battle
             _chosenAction = ChosenAction.Sub;
         }
 
+        /// <summary>Player picked which potion slot to use (M13) -- wakes RunManualPlayerTurn's
+        /// action-choice wait the same way ChooseSkill does; target selection happens next
+        /// via HandleClick, offered to the whole living ally faction (any ally, not just
+        /// ones missing HP/MP -- matches how a real player can waste a potion on purpose).</summary>
+        public void ChooseItem(PotionKind kind)
+        {
+            if (!World.Inventory.Slot(kind).IsUsable) return;
+            _chosenItemKind = kind;
+            _chosenAction = ChosenAction.Item;
+        }
+
         /// <summary>The "BA" quick-attack slot -- always free, always standardSkill.</summary>
         public SkillDefinition BasicAttackSkill(BattleUnit unit) => unit.Definition.standardSkill;
 
@@ -241,14 +262,36 @@ namespace Game.Battle
 
                 yield return new WaitForSeconds(PreActionDelaySeconds);
 
-                if (ManualMode && unit.Faction == Faction.Player)
+                unit.RestoreMp(PassiveMpRegenPerTurn);
+
+                // Checked BEFORE TickStatusEffects (which decrements/removes expired
+                // effects) so a 1-turn Stun skips exactly one turn: turn 1 sees
+                // wasStunned=true and skips while the tick counts 1->0 and removes it,
+                // turn 2 sees no Stun left and acts normally.
+                bool wasStunned = unit.IsStunned;
+                unit.TickStatusEffects();
+
+                if (!unit.IsAlive)
+                {
+                    // Poison finished them off on their own turn tick -- nothing in the
+                    // normal hit-resolution path runs for this, so replicate the same
+                    // death bookkeeping ResolveAction does on a killing blow.
+                    LogLine($"{unit.Definition.displayName} succumbs to poison.");
+                    _visuals.SyncDefeated(unit);
+                    Formation.Compact(World.AllUnits, unit.Faction);
+                }
+                else if (wasStunned)
+                {
+                    LogLine($"{unit.Definition.displayName} is stunned and can't act.");
+                }
+                else if (ManualMode && unit.Faction == Faction.Player)
                     yield return RunManualPlayerTurn(unit);
                 else
                     yield return RunAutoTurn(unit);
 
                 // One capture per consumed TurnOrder.Next() -- see BattleHistory's
                 // class doc for why this 1:1 correspondence matters for Undo/Redo.
-                _history.Capture(World.AllUnits, World.Bench, Log);
+                _history.Capture(World.AllUnits, World.Bench, Log, World.Inventory);
             }
 
             Outcome = World.PlayerDefeated ? BattleOutcome.EnemyVictory : BattleOutcome.PlayerVictory;
@@ -329,6 +372,7 @@ namespace Game.Battle
             _chosenAction = ChosenAction.None;
             _chosenSkill = null;
             _chosenSubIncoming = null;
+            _chosenItemKind = null;
             _submittedTarget = null;
             Phase = ActionPhase.ChooseAction;
             LogLine($"{unit.Definition.displayName}'s turn -- choose an action.");
@@ -373,6 +417,21 @@ namespace Game.Battle
                     yield return _visuals.SwapUnitView(unit, incoming);
                     break;
                 }
+                case ChosenAction.Item:
+                {
+                    Phase = ActionPhase.ChooseTarget;
+                    // Any living ally, not just ones missing HP/MP -- a real player can
+                    // choose to "waste" a potion on a full-HP unit if they want to, same
+                    // as Heal already allows.
+                    _pendingTargets = World.AllUnits.Where(u => u.Faction == unit.Faction && u.IsAlive).ToList();
+                    yield return new WaitUntil(() => _submittedTarget != null);
+                    var target = _submittedTarget;
+                    yield return _visuals.MoveToStage(unit, target);
+                    UseItem(unit, _chosenItemKind.Value, target);
+                    yield return new WaitForSeconds(ImpactHoldSeconds);
+                    yield return _visuals.ReturnToDock(unit, target);
+                    break;
+                }
             }
 
             PendingActor = null;
@@ -389,6 +448,34 @@ namespace Game.Battle
             World.Bench.Remove(incoming);
             World.Bench.Add(outgoing);
             LogLine($"{outgoing.Definition.displayName} subs out for {incoming.Definition.displayName}.");
+        }
+
+        /// <summary>Consumes one potion from the chosen slot and applies its effect to
+        /// target (M13). Free -- no MP cost, this is a physical item, not magic -- but,
+        /// like every other manual-mode action, costs the acting unit's turn. Silently
+        /// no-ops if the slot ran out between ChooseItem and now (shouldn't happen in
+        /// practice -- Item's icon greys out via CanUseItem the instant a slot hits 0 --
+        /// but the slot could only ever be read as usable at click time, not resolve
+        /// time, without this guard).</summary>
+        void UseItem(BattleUnit user, PotionKind kind, BattleUnit target)
+        {
+            var slot = World.Inventory.Slot(kind);
+            if (!slot.IsUsable) return;
+            slot.Count--;
+
+            int potency = PotionCalculator.Potency(slot.Potion.rank);
+            if (kind == PotionKind.Hp || kind == PotionKind.Multi)
+            {
+                target.ApplyHeal(potency);
+                LogLine($"{user.Definition.displayName} uses {slot.Potion.displayName} on {target.Definition.displayName} (+{potency} HP).");
+                if (Settings.ShowDamageNumbers) SpawnDamageNumber(target, $"+{potency}", new Color(0.55f, 0.9f, 0.55f));
+            }
+            if (kind == PotionKind.Mp || kind == PotionKind.Multi)
+            {
+                target.RestoreMp(potency);
+                LogLine($"{user.Definition.displayName} uses {slot.Potion.displayName} on {target.Definition.displayName} (+{potency} MP).");
+                if (Settings.ShowDamageNumbers) SpawnDamageNumber(target, $"+{potency} MP", new Color(0.45f, 0.65f, 0.95f));
+            }
         }
 
         /// <summary>Resolves a skill against a chosen target tile and returns every unit
@@ -408,6 +495,19 @@ namespace Game.Battle
             var hitTargets = isAoe
                 ? TargetResolver.GetAreaTargets(unit, skill, target.Column, World.AllUnits)
                 : new List<BattleUnit> { target };
+
+            // Applied up front, before the heal/mana/damage branches below (each of
+            // which returns hitTargets immediately once done) -- a status effect isn't
+            // tied to which of those branches fires, so it can't live inside any one of
+            // them without duplicating this across all three.
+            if (skill.inflictsStatus != StatusEffectType.None)
+            {
+                foreach (var hit in hitTargets)
+                {
+                    hit.ApplyStatus(skill.inflictsStatus, skill.statusMagnitude, skill.statusDuration);
+                    LogLine($"{hit.Definition.displayName} is affected by {skill.inflictsStatus}.");
+                }
+            }
 
             if (skill.targetsAllies && skill.restoresMana)
             {

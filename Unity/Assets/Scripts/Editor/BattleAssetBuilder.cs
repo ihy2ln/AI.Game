@@ -35,9 +35,10 @@ namespace Game.EditorTools
         /// written to the ScriptableObjects, so every SM button stayed greyed out).
         /// 1 = pre-M10 (standardSkill only). 2 = M10 (maxMp + 3 skillMoves per archetype).
         /// 3 = the support heal renamed off "Support Basic Attack" to "Heal". 4 = M12's
-        /// Mana Spring (Support's 4th skillMove, restoresMana).
+        /// Mana Spring (Support's 4th skillMove, restoresMana). 5 = M13's 3 potion
+        /// assets (Battle/Potions/) and status effects on 5 existing Skill Moves.
         /// </summary>
-        public const int ContentVersion = 4;
+        public const int ContentVersion = 5;
 
         /// <summary>EditorPrefs key holding the ContentVersion last written to disk.
         /// Deliberately EditorPrefs rather than an asset in the repo: a fresh clone (or a
@@ -67,8 +68,10 @@ namespace Game.EditorTools
             Directory.CreateDirectory(OutDir + "/Clips");
             Directory.CreateDirectory(OutDir + "/Characters");
             Directory.CreateDirectory(OutDir + "/Maps");
+            Directory.CreateDirectory(OutDir + "/Potions");
 
             var tier = BuildTier();
+            BuildPotions();
 
             // Side-view (Darkest Dungeon / Slay the Spire style) formation, not the isometric
             // lane grid FOUNDATION.md originally specified -- see PROJECT-README.md pivot note.
@@ -120,23 +123,32 @@ namespace Game.EditorTools
             var rangedPattern = skillByArchetype["Ranged"].pattern; // Pattern_RangedBasic, any column
 
             // Melee -- defensive: patch self up, cover an adjacent ally, or finish a target harder.
+            // Second Wind and Power Strike also carry a status effect (M13) on top of
+            // their existing heal/damage -- additive, doesn't touch the tuned power/
+            // mpCost numbers above. Magnitudes/durations are arbitrary (project owner
+            // direction), not a tuned balance pass.
             var meleeGuard = BuildSkillMove("Skill_MeleeGuard", "Second Wind",
-                BuildSelfOnlyPattern(), power: 0.8f, usesMagic: false, targetsAllies: true, mpCost: 30);
+                BuildSelfOnlyPattern(), power: 0.8f, usesMagic: false, targetsAllies: true, mpCost: 30,
+                inflictsStatus: StatusEffectType.Regen, statusMagnitude: 10f, statusDuration: 2);
             var meleeRally = BuildSkillMove("Skill_MeleeRally", "Rally",
                 supportPattern, power: 0.7f, usesMagic: false, targetsAllies: true, mpCost: 25);
             var meleePowerStrike = BuildSkillMove("Skill_MeleePowerStrike", "Power Strike",
-                meleePattern, power: 2.0f, usesMagic: false, targetsAllies: false, mpCost: 35);
+                meleePattern, power: 2.0f, usesMagic: false, targetsAllies: false, mpCost: 35,
+                inflictsStatus: StatusEffectType.DefenseDown, statusMagnitude: 0.2f, statusDuration: 2);
 
             // Ranged -- sniping and AoE: a heavy single shot, a 3-wide cluster hit, and a
-            // guaranteed full-team volley for the "AoE" end of that design intent.
+            // guaranteed full-team volley for the "AoE" end of that design intent. Snipe
+            // and Barrage also carry a status effect (M13), same additive rule as above.
             var rangedVolley = BuildSkillMove("Skill_RangedVolley", "Volley",
                 BuildVolleyPattern(rangedPattern.rangeOffsets), power: 0.6f, usesMagic: false,
                 targetsAllies: false, mpCost: 25, isRanged: true);
             var rangedSnipe = BuildSkillMove("Skill_RangedSnipe", "Snipe",
-                rangedPattern, power: 1.8f, usesMagic: false, targetsAllies: false, mpCost: 30, isRanged: true);
+                rangedPattern, power: 1.8f, usesMagic: false, targetsAllies: false, mpCost: 30, isRanged: true,
+                inflictsStatus: StatusEffectType.AttackDown, statusMagnitude: 0.2f, statusDuration: 2);
             var rangedBarrage = BuildSkillMove("Skill_RangedBarrage", "Barrage",
                 BuildBarragePattern(rangedPattern.rangeOffsets), power: 0.5f, usesMagic: false,
-                targetsAllies: false, mpCost: 45, isRanged: true);
+                targetsAllies: false, mpCost: 45, isRanged: true,
+                inflictsStatus: StatusEffectType.Stun, statusMagnitude: 0f, statusDuration: 1);
 
             // Healer -- support: the relocated single-target Heal, a wider group heal, and
             // a bigger single-target emergency heal.
@@ -152,7 +164,8 @@ namespace Game.EditorTools
             var massHeal = BuildSkillMove("Skill_SupportMassHeal", "Mass Heal",
                 BuildWideHealPattern(), power: 0.6f, usesMagic: true, targetsAllies: true, mpCost: 35);
             var focusHeal = BuildSkillMove("Skill_SupportFocusHeal", "Focus Heal",
-                supportPattern, power: 1.6f, usesMagic: true, targetsAllies: true, mpCost: 30);
+                supportPattern, power: 1.6f, usesMagic: true, targetsAllies: true, mpCost: 30,
+                inflictsStatus: StatusEffectType.Regen, statusMagnitude: 10f, statusDuration: 2);
             // Healer's standardSkill (BA) becomes the low-power attack instead of the heal
             // -- "healers can attack too" -- now that Heal itself lives in skillMoves.
             var healerBasicAttack = BuildSkillMove("Skill_SupportAttackBasic", "Support Strike",
@@ -283,6 +296,28 @@ namespace Game.EditorTools
             tier.summonWeight = 1f;
             EditorUtility.SetDirty(tier);
             return tier;
+        }
+
+        /// <summary>The 3 potion assets BattleWorld.SeedPlaceholderInventory loads by
+        /// path (M13). C-rank starting point -- there's no economy/shop system yet to
+        /// roll/sell different ranks, so "the middle of F..SSS" is a placeholder, same
+        /// spirit as TierDefinition defaulting to Tier.C for "Standard".</summary>
+        static void BuildPotions()
+        {
+            BuildPotion("Potion_Hp", "HP Potion", PotionKind.Hp);
+            BuildPotion("Potion_Mp", "MP Potion", PotionKind.Mp);
+            BuildPotion("Potion_Multi", "Multi Potion", PotionKind.Multi);
+        }
+
+        static void BuildPotion(string assetName, string displayName, PotionKind kind)
+        {
+            var potion = LoadOrCreate<PotionDefinition>($"{OutDir}/Potions/{assetName}.asset");
+            potion.potionId = assetName.ToLowerInvariant();
+            potion.displayName = displayName;
+            potion.kind = kind;
+            potion.rank = Tier.C;
+            potion.maxStack = 99;
+            EditorUtility.SetDirty(potion);
         }
 
         static SkillPattern BuildPattern(ArchetypeSpec arch)
@@ -423,7 +458,8 @@ namespace Game.EditorTools
         }
 
         static SkillDefinition BuildSkillMove(string assetName, string displayName, SkillPattern pattern,
-            float power, bool usesMagic, bool targetsAllies, int mpCost, bool isRanged = false, bool restoresMana = false)
+            float power, bool usesMagic, bool targetsAllies, int mpCost, bool isRanged = false, bool restoresMana = false,
+            StatusEffectType inflictsStatus = StatusEffectType.None, float statusMagnitude = 0f, int statusDuration = 0)
         {
             var skill = LoadOrCreate<SkillDefinition>($"{OutDir}/Skills/{assetName}.asset");
             skill.skillId = assetName.ToLowerInvariant();
@@ -437,6 +473,9 @@ namespace Game.EditorTools
             skill.isRanged = isRanged;
             skill.targetsAllies = targetsAllies;
             skill.restoresMana = restoresMana;
+            skill.inflictsStatus = inflictsStatus;
+            skill.statusMagnitude = statusMagnitude;
+            skill.statusDuration = statusDuration;
             skill.clipKey = "basicAttack";
             EditorUtility.SetDirty(skill);
             return skill;

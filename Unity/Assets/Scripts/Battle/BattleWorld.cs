@@ -23,6 +23,11 @@ namespace Game.Battle
         /// subbed in. Enemy side has no bench in this slice.</summary>
         public List<BattleUnit> Bench { get; } = new();
 
+        /// <summary>The player's 3 battle-carried potion slots (M13). Owned here rather
+        /// than on BattleController so it carries over between maps 1 and 2 the same way
+        /// AllUnits/Bench do -- see the constructor's carryOverInventory parameter.</summary>
+        public BattleInventory Inventory { get; }
+
         public IEnumerable<BattleUnit> PlayerUnits => AllUnits.Where(u => u.Faction == Faction.Player);
         public IEnumerable<BattleUnit> EnemyUnits => AllUnits.Where(u => u.Faction == Faction.Enemy);
 
@@ -51,8 +56,11 @@ namespace Game.Battle
         /// their current HP/MP) are reused for the player side instead of rolling fresh ones
         /// -- lets a party carry wounds from a previous map into the next.</param>
         /// <param name="carryOverBench">Same, for the bench.</param>
+        /// <param name="carryOverInventory">Same, for the potion slots -- if supplied,
+        /// reused as-is (remaining counts and all); if null, freshly seeded with
+        /// placeholder starting stock (see SeedPlaceholderInventory).</param>
         public BattleWorld(int mapIndex = 0, IReadOnlyList<BattleUnit> carryOverPlayer = null,
-            IReadOnlyList<BattleUnit> carryOverBench = null)
+            IReadOnlyList<BattleUnit> carryOverBench = null, BattleInventory carryOverInventory = null)
         {
             MapIndex = Mathf.Clamp(mapIndex, 0, MapCount - 1);
             Map = Resources.Load<MapDefinition>($"Battle/Maps/Map_BattleSlice{MapIndex + 1}");
@@ -126,6 +134,39 @@ namespace Game.Battle
 
             LoadedOk = AllUnits.Count > 0;
             WarnOnStaleContent();
+
+            Inventory = carryOverInventory ?? SeedPlaceholderInventory();
+        }
+
+        /// <summary>No economy/shop/farm system exists yet to source real starting stock
+        /// from (see PROJECT-README's Known gaps), so a fresh (non-carried-over) battle
+        /// seeds a placeholder 5 of each C-rank potion -- enough to actually exercise the
+        /// Item action without asset-authoring friction, not a real drop-rate/economy
+        /// decision. Loads the same 3 potion assets BattleAssetBuilder builds
+        /// (Battle/Potions/Potion_Hp|Mp|Multi); if they're missing (stale content),
+        /// leaves that slot empty rather than crashing -- same "missing art is not an
+        /// error" convention BattleAssetBuilder itself follows.</summary>
+        static BattleInventory SeedPlaceholderInventory()
+        {
+            const int StartingCount = 5;
+            var inventory = new BattleInventory();
+            Seed(inventory.Hp, "Battle/Potions/Potion_Hp", StartingCount);
+            Seed(inventory.Mp, "Battle/Potions/Potion_Mp", StartingCount);
+            Seed(inventory.Multi, "Battle/Potions/Potion_Multi", StartingCount);
+            return inventory;
+
+            static void Seed(BattleInventorySlot slot, string path, int count)
+            {
+                var potion = Resources.Load<PotionDefinition>(path);
+                if (potion == null)
+                {
+                    Debug.LogWarning($"[AI.Game] Missing PotionDefinition at Resources/{path} -- "
+                        + "run AI.Game > Battle > Build Assets From Manifest.");
+                    return;
+                }
+                slot.Potion = potion;
+                slot.Count = Mathf.Min(count, potion.maxStack);
+            }
         }
 
         /// <summary>Surfaces the one failure mode that otherwise looks like a UI bug: a

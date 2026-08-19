@@ -24,4 +24,14 @@ namespace Game.Data
     public enum TerrainType { Plain, Grass, Stone, Water, Sand, Ruins }
 
     public enum SkillPool { Standard, Class, Element }
+
+    /// <summary>Standard JRPG turn-based status effect shape (M13). AttackUp/Down and
+    /// DefenseUp/Down are fractional multipliers (0.2 = +/-20%) read by
+    /// BattleUnit.AttackMultiplier/DefenseMultiplier. Poison/Regen are a flat HP amount
+    /// applied once per the affected unit's own turn. Stun skips that unit's action
+    /// entirely for the turn -- see BattleController.RunBattle.</summary>
+    public enum StatusEffectType { None, AttackUp, AttackDown, DefenseUp, DefenseDown, Poison, Regen, Stun }
+
+    /// <summary>A battle-usable consumable's restore target. See BattleInventory.</summary>
+    public enum PotionKind { Hp, Mp, Multi }
 }

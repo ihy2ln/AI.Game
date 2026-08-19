@@ -16,7 +16,11 @@ namespace Game.Battle
     /// Column and active/bench membership are snapshotted alongside HP/MP because
     /// Formation.Compact (frontline succession), Reposition, and Sub in/out all mutate
     /// them mid-battle -- a plain HP/MP-only history would leave stale columns/roster
-    /// membership behind after an undo.
+    /// membership behind after an undo. `inventory` (M13) is optional and defaults to
+    /// null purely so every pre-existing call site (including every test) keeps
+    /// compiling unchanged; BattleController always passes World.Inventory, so potion
+    /// counts undo/redo correctly in the real game -- without this, Undo after using a
+    /// potion would exploit into a free duplicate.
     /// </summary>
     public class BattleHistory
     {
@@ -26,6 +30,11 @@ namespace Game.Battle
             public List<BattleUnit> ActiveOrder;
             public List<BattleUnit> BenchOrder;
             public List<BattleLogEntry> LogSnapshot;
+
+            /// <summary>Null when Capture was called without an inventory (every existing
+            /// test does this) -- Restore leaves BattleInventory untouched in that case
+            /// rather than treating "no inventory tracked" as "empty inventory."</summary>
+            public (int hp, int mp, int multi)? InventoryCounts;
         }
 
         readonly List<Point> _points = new();
@@ -43,7 +52,7 @@ namespace Game.Battle
         /// constructing a full BattleWorld). If the cursor isn't at the end (the player
         /// undid, then this is a *new* action rather than a Redo), the stale forward
         /// branch is discarded first -- standard undo/redo-stack semantics.</summary>
-        public void Capture(List<BattleUnit> active, List<BattleUnit> bench, BattleLog log)
+        public void Capture(List<BattleUnit> active, List<BattleUnit> bench, BattleLog log, BattleInventory inventory = null)
         {
             if (_cursor < _points.Count - 1)
                 _points.RemoveRange(_cursor + 1, _points.Count - _cursor - 1);
@@ -58,25 +67,26 @@ namespace Game.Battle
                 ActiveOrder = new List<BattleUnit>(active),
                 BenchOrder = new List<BattleUnit>(bench),
                 LogSnapshot = new List<BattleLogEntry>(log.Entries),
+                InventoryCounts = inventory != null ? (inventory.Hp.Count, inventory.Mp.Count, inventory.Multi.Count) : null,
             });
             _cursor = _points.Count - 1;
         }
 
-        public void Undo(List<BattleUnit> active, List<BattleUnit> bench, BattleLog log)
+        public void Undo(List<BattleUnit> active, List<BattleUnit> bench, BattleLog log, BattleInventory inventory = null)
         {
             if (!CanUndo) return;
             _cursor--;
-            Restore(active, bench, log);
+            Restore(active, bench, log, inventory);
         }
 
-        public void Redo(List<BattleUnit> active, List<BattleUnit> bench, BattleLog log)
+        public void Redo(List<BattleUnit> active, List<BattleUnit> bench, BattleLog log, BattleInventory inventory = null)
         {
             if (!CanRedo) return;
             _cursor++;
-            Restore(active, bench, log);
+            Restore(active, bench, log, inventory);
         }
 
-        void Restore(List<BattleUnit> active, List<BattleUnit> bench, BattleLog log)
+        void Restore(List<BattleUnit> active, List<BattleUnit> bench, BattleLog log, BattleInventory inventory)
         {
             var point = _points[_cursor];
             foreach (var kv in point.State)
@@ -90,6 +100,14 @@ namespace Game.Battle
             bench.Clear();
             bench.AddRange(point.BenchOrder);
             log.RestoreFrom(point.LogSnapshot);
+
+            if (inventory != null && point.InventoryCounts.HasValue)
+            {
+                var (hp, mp, multi) = point.InventoryCounts.Value;
+                inventory.Hp.Count = hp;
+                inventory.Mp.Count = mp;
+                inventory.Multi.Count = multi;
+            }
         }
     }
 }

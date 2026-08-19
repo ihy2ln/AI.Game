@@ -32,6 +32,7 @@ namespace Game.EditorTools
     public static class BattleContentGuard
     {
         const string CharacterDir = "Battle/Characters";
+        const string PotionDir = "Battle/Potions";
 
         static BattleContentGuard()
         {
@@ -100,6 +101,16 @@ namespace Game.EditorTools
                 if (moves == 0) problems.Add($"{def.name} has no skillMoves (SM would be greyed out)");
                 if (def.maxMp <= 0) problems.Add($"{def.name} has maxMp {def.maxMp}");
             }
+
+            // M13: the 3 battle-inventory potions BattleWorld.SeedPlaceholderInventory
+            // loads by exact path -- missing any one leaves that Item slot permanently
+            // empty with only a Console warning to explain why.
+            foreach (var potionPath in new[] { "Potion_Hp", "Potion_Mp", "Potion_Multi" })
+            {
+                if (Resources.Load<PotionDefinition>($"{PotionDir}/{potionPath}") == null)
+                    problems.Add($"missing PotionDefinition at Resources/{PotionDir}/{potionPath}");
+            }
+
             return problems;
         }
     }

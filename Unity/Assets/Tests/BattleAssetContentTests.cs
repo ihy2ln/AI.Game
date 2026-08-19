@@ -189,6 +189,62 @@ namespace Game.Tests
             }
         }
 
+        /// <summary>BattleWorld.SeedPlaceholderInventory loads these 3 assets by exact
+        /// path -- missing one leaves that Item slot permanently empty (see
+        /// BattleContentGuard's parallel check, which is what actually catches this in
+        /// practice; this test is the "code-based stats" verification of the same thing).</summary>
+        [Test]
+        public void AllThreePotions_ExistWithCorrectKindAndUsablePotency()
+        {
+            var expected = new[]
+            {
+                ("Potion_Hp", PotionKind.Hp),
+                ("Potion_Mp", PotionKind.Mp),
+                ("Potion_Multi", PotionKind.Multi),
+            };
+
+            foreach (var (assetName, kind) in expected)
+            {
+                var potion = Resources.Load<PotionDefinition>($"Battle/Potions/{assetName}");
+                Assert.IsNotNull(potion, $"{assetName} missing from Resources/Battle/Potions -- "
+                    + "run AI.Game > Battle > Build Assets From Manifest.");
+                Assert.AreEqual(kind, potion.kind, $"{assetName} has kind {potion.kind}, expected {kind}.");
+                Assert.Greater(potion.maxStack, 0, $"{assetName} has maxStack {potion.maxStack}.");
+                Assert.Greater(PotionCalculator.Potency(potion.rank), 0, $"{assetName}'s rank ({potion.rank}) produces 0 potency.");
+            }
+        }
+
+        /// <summary>The 5 Skill Moves that carry a status effect on top of their existing
+        /// heal/damage (M13) -- verifies the retrofit actually landed on the right skill
+        /// with the right type, not just that *some* skill somewhere has one.</summary>
+        [Test]
+        public void RetrofittedSkillMoves_CarryTheirIntendedStatusEffect()
+        {
+            var expected = new (string skillId, StatusEffectType type)[]
+            {
+                ("skill_meleeguard", StatusEffectType.Regen),        // Second Wind
+                ("skill_meleepowerstrike", StatusEffectType.DefenseDown), // Power Strike
+                ("skill_supportfocusheal", StatusEffectType.Regen),  // Focus Heal
+                ("skill_rangedsnipe", StatusEffectType.AttackDown),  // Snipe
+                ("skill_rangedbarrage", StatusEffectType.Stun),      // Barrage
+            };
+
+            var allMoves = AllUnitIds
+                .Select(Load)
+                .SelectMany(d => d.skillMoves.Where(s => s != null))
+                .GroupBy(s => s.skillId)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            foreach (var (skillId, type) in expected)
+            {
+                Assert.IsTrue(allMoves.ContainsKey(skillId), $"'{skillId}' is not on any character.");
+                var skill = allMoves[skillId];
+                Assert.AreEqual(type, skill.inflictsStatus,
+                    $"'{skill.displayName}' inflicts {skill.inflictsStatus}, expected {type}.");
+                Assert.Greater(skill.statusDuration, 0, $"'{skill.displayName}' has a 0-turn status duration.");
+            }
+        }
+
         [Test]
         public void BothMaps_ExistWithThreeEnemies()
         {

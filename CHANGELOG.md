@@ -4,12 +4,40 @@ Reverse-chronological history of the `feature/battle-slice` branch. For *current
 state (what's done, what's known-broken, what's next) see `PROJECT-README.md` instead
 — this file is a record of what shipped when, not a living status doc.
 
-## Unreleased — M9-M12 (2026-08-19)
+## Unreleased — M9-M13 (2026-08-19)
 
 Not yet tagged or cut as a release. Depth on the battle slice: a real roster bench,
 a per-unit skill system, the tooling to stop authored content from silently failing
-to ship, and a first-pass MP economy plus FMV playback components.
+to ship, a first-pass MP economy plus FMV playback components, and now battle
+potions, standard JRPG status effects, and an explicit Android-first platform priority.
 
+- **M13 — Battle potions, status effects, per-turn MP regen, platform priority.**
+  Direction from the project owner across five areas. **Potions:** a new
+  `BattleInventory` with exactly 3 fixed slots (Hp/Mp/Multi), each holding an F-SSS
+  ranked `PotionDefinition` (reuses the existing character `Tier` enum for rank)
+  stacked up to 99; `PotionCalculator.Potency(Tier)` is a flat restore-amount table,
+  arbitrary numbers per the project owner's direction; a new manual-mode "I" icon
+  opens a popup to pick a slot, then a target, same flow as every other targeted
+  action; `BattleWorld` seeds a placeholder 5-of-each-C-rank stock on a fresh battle
+  (no shop/economy exists yet to source real stock from) and carries it across the
+  2-map sequence; `BattleHistory` gained an optional inventory parameter so
+  Undo/Redo can't be exploited into a free potion duplicate. **Status effects:** a
+  real, standard-JRPG-shaped system -- `StatusEffectType` (AttackUp/Down,
+  DefenseUp/Down, Poison, Regen, Stun), ticking once per the affected unit's own turn,
+  buffs/debuffs folded into `DamageCalculator` via new `BattleUnit.AttackMultiplier`/
+  `DefenseMultiplier`, Stun skipping that unit's action entirely. Retrofit onto 5
+  existing Skill Moves additively (their original heal/damage numbers untouched):
+  Second Wind and Focus Heal also grant Regen, Power Strike also applies Defense Down,
+  Snipe also applies Attack Down, Barrage (a full-team AoE) also applies Stun to
+  everyone it hits. **MP:** a new passive per-turn trickle (+3, on top of M12's
+  BA-specific +4) -- small per tick, meaningful over a long battle, per the project
+  owner's framing. **FMV:** explicitly deferred until more of the foundation is laid
+  out. **Platform priority:** stated explicitly for the first time -- Android fully
+  playable first, Windows second, iPhone third (not started) -- which reprioritizes
+  on-device Android verification (still blocked on `adb` access) to the top of the
+  project's open-items list. 15 new EditMode tests (`StatusEffectTests.cs`,
+  `PotionTests.cs`, plus additions to `BattleAssetContentTests.cs` and
+  `BattleHistoryTests.cs`), all pure C#, all safe headless.
 - **M12 — MP economy, FMV chroma-key components, code-based Skill Move tests.** Per
   the project owner's direction: verify Skill Moves with tests rather than interactive
   play, then build a real (if arbitrary-numbered) MP economy and the FMV plumbing

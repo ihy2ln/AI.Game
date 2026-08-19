@@ -17,9 +17,10 @@ namespace Game.Battle
         /// map 0, fresh roster. The two-map sequence and full-battle restart both funnel
         /// through BootMap below.</summary>
         [ContextMenu("Boot Battle")]
-        public void Boot() => BootMap(0, null, null);
+        public void Boot() => BootMap(0, null, null, null);
 
-        public void BootMap(int mapIndex, IReadOnlyList<BattleUnit> carryOverPlayer, IReadOnlyList<BattleUnit> carryOverBench)
+        public void BootMap(int mapIndex, IReadOnlyList<BattleUnit> carryOverPlayer, IReadOnlyList<BattleUnit> carryOverBench,
+            BattleInventory carryOverInventory)
         {
             for (var i = transform.childCount - 1; i >= 0; i--)
             {
@@ -45,7 +46,7 @@ namespace Game.Battle
             var settings = BattleSettings.Load();
             AudioListener.volume = settings.MasterVolume;
 
-            var world = new BattleWorld(mapIndex, carryOverPlayer, carryOverBench);
+            var world = new BattleWorld(mapIndex, carryOverPlayer, carryOverBench, carryOverInventory);
 
             var visualsGo = new GameObject("BattleVisuals");
             visualsGo.transform.SetParent(transform, false);
@@ -55,8 +56,8 @@ namespace Game.Battle
             var ctrlGo = new GameObject("BattleController");
             ctrlGo.transform.SetParent(transform, false);
             var ctrl = ctrlGo.AddComponent<BattleController>();
-            ctrl.OnRestartRequested += () => BootMap(0, null, null);
-            ctrl.OnAdvanceRequested += () => BootMap(mapIndex + 1, world.PlayerUnits.ToList(), world.Bench.ToList());
+            ctrl.OnRestartRequested += () => BootMap(0, null, null, null);
+            ctrl.OnAdvanceRequested += () => BootMap(mapIndex + 1, world.PlayerUnits.ToList(), world.Bench.ToList(), world.Inventory);
             ctrl.Init(world, visuals, cam, settings);
 
             var hudGo = new GameObject("BattleHud");
