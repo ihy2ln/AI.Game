@@ -267,17 +267,15 @@ via automation.
      with the 3 real clips M1/M2 already generated (`clip_melee_basic`/`clip_ranged_
      basic`/`clip_heal_basic`, imported and referenced by `Clips_MeleeBasic`/etc.) --
      not just scaffolding for hypothetical future assets.
-     **Found a real, separate bug while building this:** the `impactFrames` metadata
-     baked into those Clip assets reads as corrupted -- `Clips_MeleeBasic`'s is
-     `12000000` where a 24fps clip a few seconds long should read `12`; `Clips_
-     SupportBasic`'s concatenates two values the same way (`10`+`18` → `1000000018000000`).
-     Almost certainly a manifest/`generate.py` authoring bug from M1/M2, not anything
-     touched this session. `BattleClipPlayer` fails safe against it (a threshold that's
-     never reached just never fires `onImpact`, no crash), and the current wiring
-     doesn't depend on it being correct -- `PlayImpactBeat` uses the clip's own runtime
-     as the hold duration, not frame-accurate sync, so this doesn't block anything today.
-     Worth fixing (or just regenerating the clips) before impact-frame sync is worth
-     building on top of.
+     **Found, and later fixed, a real, separate bug while building this:** the
+     `impactFrames` metadata baked into those Clip assets read as corrupted --
+     `Clips_MeleeBasic`'s was `12000000` where the manifest's own source data says `18`;
+     `Clips_SupportBasic`'s concatenated two values the same way. `BattleClipPlayer`
+     failed safe against it either way (a threshold that's never reached just never
+     fires `onImpact`, no crash), so it didn't block anything at the time. **Fixed
+     later this session** -- see "Known gaps" for the investigation (root cause not
+     fully confirmed; a `JsonUtility` array-parsing edge case is suspected) and the fix
+     (hand-corrected to the manifest's real values, guarded by new `ClipMetadataTests`).
    - **Item 1: code-based skill verification, not interactive play.** Two new test
      files, `MpRegenTests.cs` (7 tests: spend/restore clamping, the 25%-50% recovery
      band via 50 rolls, `ComputeManaRestore` scaling) and additions to
@@ -491,36 +489,49 @@ Sub's bench).
   call; nothing else about it exists yet. `RestoreMpFull()` is similarly just a hook --
   no farm/town "sleep" system calls it, since no persistence layer connects battle party
   state to the farm scene.
-- **FMV clip `impactFrames` metadata is corrupted on disk** (found building M12's
-  chroma-key components) -- `Clips_MeleeBasic`'s reads `12000000` where `12` is surely
-  meant, `Clips_SupportBasic`'s concatenates two values the same way. Almost certainly a
-  `Tools/ComfyUI/generate.py` authoring bug from M1/M2. Doesn't block anything today
-  (`BattleClipPlayer` fails safe against it, and `BattleController.PlayImpactBeat`
-  doesn't attempt frame-accurate sync yet), but should be fixed -- or the clips
-  regenerated, per the project owner's plan to possibly redo them anyway -- before any
-  future work tries to sync a visual effect to a clip's impact frame.
+- **Resolved: FMV clip `impactFrames` metadata hand-fixed.** `Clips_MeleeBasic`/
+  `RangedBasic`/`SupportBasic` had `impactFrames: 12000000` etc. -- a bare scalar,
+  where every other `List<int>` in this project's assets serializes as a normal YAML
+  block list, holding a value in the millions where the manifest's own ground-truth
+  data (`Tools/ComfyUI/manifest.export.json`, `impact_frames: [18]` etc.) says a small
+  one. **Root cause not fully confirmed** -- the JSON itself is clean and
+  `BattleAssetBuilder.BuildClipSet`'s logic (`new List<int>(clipAsset.impact_frames)`)
+  looks correct by inspection, and the corrupted values were byte-for-byte identical
+  across two independent `Build()` runs months apart (confirmed via `git log` on
+  `Clips_MeleeBasic.asset` — untouched since the M3 commit despite M11's rebuild
+  running `BuildClipSet` unconditionally), which rules out a stale-manifest
+  explanation. A `JsonUtility` array-parsing edge case is suspected but unproven — a
+  live diagnostic (`JsonUtility.FromJson` dumped via a throwaway EditMode test) was the
+  next step but couldn't run this session (the interactive Editor was open, and
+  headless can't share the project lock). **Fixed directly**: hand-edited the 3 asset
+  files to the manifest's real values (melee 18, ranged 22, heal 16+24) in correct
+  block-list YAML. `ClipMetadataTests.cs` (new) asserts every impact frame is under a
+  sane bound (10,000) and would fail loudly if this regresses -- including from a
+  future `Build Assets From Manifest` re-run, if the underlying bug turns out to still
+  be live. **Run that test once Unity is closed** to confirm the fix holds; it hasn't
+  been run yet this session.
 
 ## Natural next steps, roughly in priority order
 
-1. **Rebuild in the interactive Editor and re-run the tests.** M12's content (Mana
-   Spring) needs the same `BattleContentGuard` auto-rebuild M11 relies on -- open the
-   Editor once, then headless `-runTests` should go 37/37 instead of 35/37.
-2. **Fix or regenerate the FMV clips' `impactFrames` metadata** (see "Known gaps") --
-   the current values are unusable, and it's the one thing standing between today's
-   duration-only clip playback and real frame-accurate impact sync.
-3. **A potion/item system**, if the project owner wants the third MP-recovery source
+1. **Run the full test suite once Unity is closed** to confirm both the M12 rebuild
+   (38/38 expected, including the new `ClipMetadataTests`) and the `impactFrames`
+   hand-fix actually
+   hold -- neither has been verified headlessly yet as of the fix landing.
+2. **A potion/item system**, if the project owner wants the third MP-recovery source
    from M12's design to actually exist -- needs an inventory concept this slice doesn't
    have at all yet, so it's a bigger lift than the other two economy pieces were.
-4. **A per-turn passive MP regen tick**, if between-map recovery alone proves too
+3. **A per-turn passive MP regen tick**, if between-map recovery alone proves too
    sparse in practice once the project owner plays a few battles.
-5. Choose/build final FMV clip assets (Unity Asset Store base or new ComfyUI
+4. Choose/build final FMV clip assets (Unity Asset Store base or new ComfyUI
    generations, per the project owner's plan) once the components above are solid --
-   the plumbing is ready, only the content is placeholder.
-6. On-device Android verification, whenever a session has `adb` access.
-7. Consider a real status-effect system if future Skill Moves need to go beyond
+   the plumbing is ready, only the content is placeholder. Now that `impactFrames` is
+   real data, frame-accurate impact sync (flash/FX synced to the clip's own hit frame
+   instead of firing at clip start) is worth building too.
+5. On-device Android verification, whenever a session has `adb` access.
+6. Consider a real status-effect system if future Skill Moves need to go beyond
    heal/damage (buffs, shields, taunt) — explicitly deferred in M10, see item 7
    under "What changed."
-8. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
+7. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
    reserves, no save/persistence. FOUNDATION.md's broader systems (tier/fusion, gacha,
    farm/town economy) are designed but not connected to this battle system yet —
    that's the actual "rest of the game," this slice only proves the battle screen works.
