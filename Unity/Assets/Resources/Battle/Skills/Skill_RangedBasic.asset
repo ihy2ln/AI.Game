@@ -25,5 +25,6 @@ MonoBehaviour:
   usesMagic: 0
   isRanged: 1
   targetsAllies: 0
+  restoresMana: 0
   clipKey: basicAttack
   rollWeight: 1

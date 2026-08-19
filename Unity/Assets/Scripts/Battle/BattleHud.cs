@@ -20,10 +20,10 @@ namespace Game.Battle
         bool _showKeybinds;
         bool _confirmRestart;
 
-        // Press-and-hold on the "SM" icon -- see Update() and DrawActionMenu.
-        const float SmHoldSeconds = 0.35f;
-        Rect _smButtonRect;
-        float _smHoldStartTime = -1f;
+        // Tap the "SM" icon to toggle the Skill Move list -- see DrawActionMenu. This was
+        // originally press-and-hold (0.35s), which read as an unresponsive button: a tap
+        // did nothing and gave no hint that holding was the gesture. BA/R/S are all taps,
+        // so SM being the one exception was the problem, not the timing.
         bool _showSkillList;
 
         public void Init(BattleController ctrl, Camera cam, BattleVisuals visuals, bool logOpenByDefault)
@@ -43,24 +43,9 @@ namespace Game.Battle
                 if (_showLog) _logScroll = new Vector2(0, float.MaxValue);
             }
 
-            bool choosingAction = _ctrl != null && _ctrl.Phase == ActionPhase.ChooseAction && _smButtonRect.width > 0f;
-            if (!choosingAction)
-            {
-                _showSkillList = false;
-                _smHoldStartTime = -1f;
-                return;
-            }
-
-            var mouseGui = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
-            bool overSm = _smButtonRect.Contains(mouseGui);
-
-            if (Input.GetMouseButtonDown(0) && overSm) _smHoldStartTime = Time.unscaledTime;
-            if (Input.GetMouseButtonUp(0)) _smHoldStartTime = -1f;
-            if (_smHoldStartTime >= 0f && Time.unscaledTime - _smHoldStartTime >= SmHoldSeconds)
-            {
-                _showSkillList = true;
-                _smHoldStartTime = -1f;
-            }
+            // The skill list only belongs to a live action choice -- close it as soon as
+            // the turn moves on to target selection or to the next unit.
+            if (_ctrl == null || _ctrl.Phase != ActionPhase.ChooseAction) _showSkillList = false;
         }
 
         void EnsureStyles()
@@ -171,7 +156,7 @@ namespace Game.Battle
                 "Ctrl+Y -- redo turn",
                 "R -- restart (after battle ends)",
                 "Click -- choose a highlighted target",
-                "BA/R/S -- tap. SM -- press and hold for skill list",
+                "BA/SM/R/S -- tap. SM opens the skill list; tap it again to close",
             };
             float y = panel.y + 32;
             foreach (var line in lines)
@@ -318,7 +303,7 @@ namespace Game.Battle
         void DrawActionMenu()
         {
             var actor = _ctrl.PendingActor;
-            if (actor == null || _cam == null || _visuals == null) { _smButtonRect = default; return; }
+            if (actor == null || _cam == null || _visuals == null) { _showSkillList = false; return; }
 
             // Anchored below the acting unit's actual feet -- DockPosition is the
             // sprite's pivot, which is Center (Unity's default sprite import pivot), not
@@ -329,7 +314,7 @@ namespace Game.Battle
             // the edge of the screen for a back-column/edge unit.
             var feetWorld = _visuals.DockPosition(actor) + Vector3.down * (BattleLayout.TargetUnitHeight / 2f);
             var screen = _cam.WorldToScreenPoint(feetWorld);
-            if (screen.z < 0) { _smButtonRect = default; return; }
+            if (screen.z < 0) { _showSkillList = false; return; }
             float anchorX = screen.x;
             float anchorY = Screen.height - screen.y;
 
@@ -349,19 +334,18 @@ namespace Game.Battle
             for (int i = 0; i < labels.Length; i++)
             {
                 var rect = new Rect(startX + i * (IconSize + IconGap), y, IconSize, IconSize);
-                if (labels[i] == "SM") _smButtonRect = rect;
 
                 GUI.enabled = enabled[i];
                 bool clicked = GUI.Button(rect, labels[i], _iconBtn);
                 GUI.enabled = true;
-
-                // SM's own click is ignored -- it only opens via press-and-hold, tracked
-                // in Update() against _smButtonRect (drawn here, polled next frame).
-                if (labels[i] == "SM" || !clicked) continue;
+                if (!clicked) continue;
 
                 switch (labels[i])
                 {
                     case "BA": _ctrl.ChooseSkill(basicAttack); break;
+                    // Toggle, so a second tap backs out of the list without committing to
+                    // a skill -- there's no other way to dismiss it.
+                    case "SM": _showSkillList = !_showSkillList; break;
                     case "R": _ctrl.ChooseReposition(); break;
                     case "S": _ctrl.OpenBenchMenu(); break;
                 }
@@ -382,8 +366,11 @@ namespace Game.Battle
             float y = panel.y + 4f;
             foreach (var skill in options)
             {
-                string name = skill.targetsAllies ? "Heal"
-                    : !string.IsNullOrEmpty(skill.displayName) ? skill.displayName : "Skill";
+                // Always the skill's own name. This used to force "Heal" for anything with
+                // targetsAllies, which collapsed every support skill into the same label --
+                // Kestrel's Second Wind and Rally both read "Heal", as did all three of
+                // Linnet's. targetsAllies means "aims at my side", not "is the heal".
+                string name = !string.IsNullOrEmpty(skill.displayName) ? skill.displayName : "Skill";
                 int mpCost = _ctrl.EffectiveMpCost(skill);
                 string label = mpCost > 0 ? $"{name} ({mpCost} MP)" : name;
 

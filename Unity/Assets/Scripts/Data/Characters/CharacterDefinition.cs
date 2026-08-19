@@ -44,10 +44,9 @@ namespace Game.Data
         public SkillDefinition standardSkill;
 
         [Tooltip("The 'SM' (Skill Move) list -- mana-cost actions beyond the basic attack, "
-            + "shown via manual mode's press-and-hold on SM. Up to 3 slots for the eventual "
-            + "special skills 1-3; archetype design intent: frontline gets defensive skills, "
-            + "healers get support skills (this is where Heal lives), ranged gets "
-            + "sniping/AoE skills.")]
+            + "shown by tapping SM in manual mode. Up to 3 slots for special skills 1-3; "
+            + "archetype design intent: frontline gets defensive skills, healers get "
+            + "support skills (this is where Heal lives), ranged gets sniping/AoE skills.")]
         public List<SkillDefinition> skillMoves = new();
 
         [Tooltip("Leave empty to roll from the global pool matching classType.")]

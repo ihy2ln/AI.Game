@@ -10,21 +10,21 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: ba9d5eb2cf0efae4bb0f413fb8160851, type: 3}
-  m_Name: Skill_SupportBasic
+  m_Name: Skill_SupportManaSpring
   m_EditorClassIdentifier: Game.Data::Game.Data.SkillDefinition
-  skillId: skill_support_heal
-  displayName: Heal
+  skillId: skill_supportmanaspring
+  displayName: Mana Spring
   description: 
   pool: 0
   classType: 0
   element: 0
   pattern: {fileID: 11400000, guid: ece795502feac9442ba00434eb162da5, type: 2}
-  mpCost: 20
+  mpCost: 15
   cooldown: 0
   power: 1
   usesMagic: 1
   isRanged: 0
   targetsAllies: 1
-  restoresMana: 0
+  restoresMana: 1
   clipKey: basicAttack
   rollWeight: 1

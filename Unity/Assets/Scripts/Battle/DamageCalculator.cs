@@ -35,5 +35,14 @@ namespace Game.Battle
             float magic = caster.Stats.magic;
             return Mathf.Max(0, Mathf.RoundToInt(skill.power * magic));
         }
+
+        /// <summary>Same formula as ComputeHeal -- kept as a separate method (not an
+        /// alias) so a future balance pass can diverge MP-restore scaling from HP-heal
+        /// scaling without an implicit coupling.</summary>
+        public static int ComputeManaRestore(BattleUnit caster, SkillDefinition skill)
+        {
+            float magic = caster.Stats.magic;
+            return Mathf.Max(0, Mathf.RoundToInt(skill.power * magic));
+        }
     }
 }

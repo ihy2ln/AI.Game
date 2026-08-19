@@ -1,7 +1,9 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using Game.Data;
 
 namespace Game.Battle
 {
@@ -11,7 +13,10 @@ namespace Game.Battle
     {
         readonly Dictionary<BattleUnit, GameObject> _unitViews = new();
         readonly Dictionary<BattleUnit, SpriteRenderer> _unitRenderers = new();
+        readonly Dictionary<BattleUnit, BattleClipPlayer> _clipPlayers = new();
         Game.Data.MapDefinition _map;
+
+        const string ChromaKeyShaderName = "Game/ChromaKeyVideo";
 
         public void Build(BattleWorld world)
         {
@@ -79,6 +84,16 @@ namespace Game.Battle
             go.SetActive(startActive);
             _unitViews[unit] = go;
             _unitRenderers[unit] = sr;
+
+            // Parented under `go` so it tracks every existing tween for free -- see
+            // BattleClipPlayer.Init's doc for why it needs `scale` to undo `go`'s own
+            // normalization. Left inactive; only HasActionClip-gated actions ever call
+            // PlayActionClip on it (see that method for which actions qualify).
+            var clipGo = new GameObject("Clip");
+            clipGo.transform.SetParent(go.transform, false);
+            var clipPlayer = clipGo.AddComponent<BattleClipPlayer>();
+            clipPlayer.Init(Shader.Find(ChromaKeyShaderName), scale);
+            _clipPlayers[unit] = clipPlayer;
         }
 
         /// <summary>Screen-space hit test for manual targeting -- no colliders needed,
@@ -154,6 +169,37 @@ namespace Game.Battle
                 yield return null;
             }
             attackerGo.transform.position = approachPos;
+        }
+
+        /// <summary>True if `skill` has a real FMV clip to play for `unit` right now --
+        /// callers (BattleController) branch on this to choose PlayActionClip over the
+        /// flat ImpactHoldSeconds wait. Deliberately restricted to the true basic attack
+        /// (skill == unit.Definition.standardSkill): every Skill Move currently shares
+        /// clipKey "basicAttack" too (BattleAssetBuilder.BuildSkillMove hasn't been given
+        /// per-skill clips yet), so playing it for e.g. Power Strike would show the
+        /// generic melee-swing clip on a skill it doesn't belong to -- Skill Moves keep
+        /// the existing sprite+flash/impact-FX presentation until they get their own.</summary>
+        public bool HasActionClip(BattleUnit unit, SkillDefinition skill)
+        {
+            if (skill != unit.Definition.standardSkill) return false;
+            var entry = unit.Definition.clips != null ? unit.Definition.clips.Get(skill.clipKey) : null;
+            return entry != null && entry.clip != null
+                && _clipPlayers.TryGetValue(unit, out var player) && player.IsReady;
+        }
+
+        /// <summary>Plays the clip HasActionClip already confirmed exists, hiding the
+        /// unit's sprite for the duration and restoring it after. Simplification worth
+        /// noting: this replaces the post-ResolveAction wait, so the clip starts playing
+        /// only after damage/heal numbers and the flash/impact-FX have already fired --
+        /// it is not frame-synced to the clip's own impactFrames yet (see
+        /// BattleClipPlayer's class doc for why that metadata can't be trusted today).</summary>
+        public IEnumerator PlayActionClip(BattleUnit unit, SkillDefinition skill, Action onImpact)
+        {
+            var entry = unit.Definition.clips.Get(skill.clipKey);
+            var player = _clipPlayers[unit];
+            if (_unitRenderers.TryGetValue(unit, out var sr)) sr.enabled = false;
+            yield return player.Play(entry, unit.FacingRight, onImpact);
+            if (_unitRenderers.TryGetValue(unit, out var sr2)) sr2.enabled = true;
         }
 
         /// <summary>Reposition action: two same-faction units have already swapped Column

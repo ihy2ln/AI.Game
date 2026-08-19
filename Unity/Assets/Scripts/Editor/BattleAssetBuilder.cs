@@ -27,6 +27,24 @@ namespace Game.EditorTools
     {
         const string OutDir = "Assets/Resources/Battle";
 
+        /// <summary>Bump whenever the content this builder authors changes shape (new
+        /// skills, new stats, retuned patterns). BattleContentGuard compares this against
+        /// the last-built stamp and re-runs Build() automatically inside an interactive
+        /// Editor session, so freshly-written content can never sit un-built again --
+        /// which is exactly what happened to M10's 9 Skill Moves (built in code, never
+        /// written to the ScriptableObjects, so every SM button stayed greyed out).
+        /// 1 = pre-M10 (standardSkill only). 2 = M10 (maxMp + 3 skillMoves per archetype).
+        /// 3 = the support heal renamed off "Support Basic Attack" to "Heal". 4 = M12's
+        /// Mana Spring (Support's 4th skillMove, restoresMana).
+        /// </summary>
+        public const int ContentVersion = 4;
+
+        /// <summary>EditorPrefs key holding the ContentVersion last written to disk.
+        /// Deliberately EditorPrefs rather than an asset in the repo: a fresh clone (or a
+        /// git revert of Resources/Battle) then rebuilds once on first open, which is the
+        /// behaviour we want.</summary>
+        public const string ContentVersionPrefKey = "AI.Game.Battle.ContentVersion";
+
         [MenuItem("AI.Game/Battle/Build Assets From Manifest")]
         public static void Build()
         {
@@ -122,7 +140,13 @@ namespace Game.EditorTools
 
             // Healer -- support: the relocated single-target Heal, a wider group heal, and
             // a bigger single-target emergency heal.
+            // BuildSkill named this "Support Basic Attack" back when it was the Support
+            // archetype's standardSkill. It's the single-target Heal now (M10 moved it into
+            // skillMoves and gave healers a real attack for their BA), so it needs its own
+            // identity -- the SM popup shows displayName verbatim.
             var healSkill = skillByArchetype["Support"];
+            healSkill.skillId = "skill_support_heal";
+            healSkill.displayName = "Heal";
             healSkill.mpCost = 20;
             EditorUtility.SetDirty(healSkill);
             var massHeal = BuildSkillMove("Skill_SupportMassHeal", "Mass Heal",
@@ -133,12 +157,21 @@ namespace Game.EditorTools
             // -- "healers can attack too" -- now that Heal itself lives in skillMoves.
             var healerBasicAttack = BuildSkillMove("Skill_SupportAttackBasic", "Support Strike",
                 supportPattern, power: 0.5f, usesMagic: false, targetsAllies: false, mpCost: 0);
+            // Mana Spring (M12) -- the healer spends their own MP to hand a slice of it to
+            // an ally, per the project owner's MP-economy design: a small passive trickle
+            // from basic attacks, a bigger chunk between battles, full restore reserved for
+            // a future farm/town "sleep" hook, and this -- an active, targeted top-up a
+            // player can reach for mid-battle. Same range as Heal (self or an adjacent
+            // ally); restoresMana routes it to BattleController.ResolveAction's MP branch
+            // instead of the HP-heal branch.
+            var manaSpring = BuildSkillMove("Skill_SupportManaSpring", "Mana Spring",
+                supportPattern, power: 1.0f, usesMagic: true, targetsAllies: true, mpCost: 15, restoresMana: true);
 
             var skillMovesByArchetype = new Dictionary<string, List<SkillDefinition>>
             {
                 ["Melee"] = new() { meleeGuard, meleeRally, meleePowerStrike },
                 ["Ranged"] = new() { rangedVolley, rangedSnipe, rangedBarrage },
-                ["Support"] = new() { healSkill, massHeal, focusHeal },
+                ["Support"] = new() { healSkill, massHeal, focusHeal, manaSpring },
             };
             var standardSkillOverride = new Dictionary<string, SkillDefinition> { ["Support"] = healerBasicAttack };
 
@@ -158,14 +191,16 @@ namespace Game.EditorTools
 
             var (fxSheet, fxRects) = LoadFxSheet();
             var manifestBackground = LoadSprite(backgroundAsset, unityRelRoot);
-            BuildMap(1, characterDefs, tier,
-                LoadBackgroundSprite("bg_battle1") ?? manifestBackground, fxSheet, fxRects);
-            BuildMap(2, characterDefs, tier,
-                LoadBackgroundSprite("bg_battle2") ?? manifestBackground, fxSheet, fxRects);
+            // Explicit == null, not ??: Unity's overloaded equality is what detects a
+            // destroyed/unassigned Object, and ?? bypasses it (the same trap that left
+            // BattleBootstrap silently without a Camera -- see PROJECT-README.md M10).
+            BuildMap(1, characterDefs, tier, OrFallback(LoadBackgroundSprite("bg_battle1"), manifestBackground), fxSheet, fxRects);
+            BuildMap(2, characterDefs, tier, OrFallback(LoadBackgroundSprite("bg_battle2"), manifestBackground), fxSheet, fxRects);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log("[AI.Game] Battle assets built from manifest.");
+            EditorPrefs.SetInt(ContentVersionPrefKey, ContentVersion);
+            Debug.Log($"[AI.Game] Battle assets built from manifest (content v{ContentVersion}).");
         }
 
         // -- manifest loading -----------------------------------------------------
@@ -388,7 +423,7 @@ namespace Game.EditorTools
         }
 
         static SkillDefinition BuildSkillMove(string assetName, string displayName, SkillPattern pattern,
-            float power, bool usesMagic, bool targetsAllies, int mpCost, bool isRanged = false)
+            float power, bool usesMagic, bool targetsAllies, int mpCost, bool isRanged = false, bool restoresMana = false)
         {
             var skill = LoadOrCreate<SkillDefinition>($"{OutDir}/Skills/{assetName}.asset");
             skill.skillId = assetName.ToLowerInvariant();
@@ -401,6 +436,7 @@ namespace Game.EditorTools
             skill.usesMagic = usesMagic;
             skill.isRanged = isRanged;
             skill.targetsAllies = targetsAllies;
+            skill.restoresMana = restoresMana;
             skill.clipKey = "basicAttack";
             EditorUtility.SetDirty(skill);
             return skill;
@@ -463,6 +499,12 @@ namespace Game.EditorTools
         // 2.0 API compatibility level (ProjectSettings apiCompatibilityLevel: 6) -- roll our own.
         static List<ManifestAsset> GetOrEmpty(Dictionary<string, List<ManifestAsset>> dict, string key) =>
             dict.TryGetValue(key, out var list) ? list : new List<ManifestAsset>();
+
+        /// <summary>`preferred` unless it's null-or-destroyed by Unity's own equality
+        /// rules. A plain `a ?? b` compares CLR references and so treats Unity's
+        /// "fake null" wrapper as a live object.</summary>
+        static T OrFallback<T>(T preferred, T fallback) where T : UnityEngine.Object =>
+            preferred == null ? fallback : preferred;
 
         static TValue TryGet<TValue>(Dictionary<string, TValue> dict, string key) where TValue : class =>
             dict.TryGetValue(key, out var value) ? value : null;

@@ -4,6 +4,63 @@ Reverse-chronological history of the `feature/battle-slice` branch. For *current
 state (what's done, what's known-broken, what's next) see `PROJECT-README.md` instead
 — this file is a record of what shipped when, not a living status doc.
 
+## Unreleased — M9-M12 (2026-08-19)
+
+Not yet tagged or cut as a release. Depth on the battle slice: a real roster bench,
+a per-unit skill system, the tooling to stop authored content from silently failing
+to ship, and a first-pass MP economy plus FMV playback components.
+
+- **M12 — MP economy, FMV chroma-key components, code-based Skill Move tests.** Per
+  the project owner's direction: verify Skill Moves with tests rather than interactive
+  play, then build a real (if arbitrary-numbered) MP economy and the FMV plumbing
+  clips need, even though final clip assets aren't chosen yet. `BattleUnit` gained
+  `SpendMp`/`RestoreMp`/`RestoreMpFull`/`RecoverMpAfterBattle`; MP now has four
+  sources -- a small trickle from a unit's own BA, 25-50% of missing MP restored
+  between maps 1 and 2 (HP still doesn't recover there, on purpose), a new Support
+  Skill Move **Mana Spring** (restores an ally's MP via a new `SkillDefinition
+  .restoresMana` flag), and a `RestoreMpFull()` hook reserved for a future farm/town
+  rest system. Found and fixed a real bug while adding Mana Spring: the auto-heal
+  skill lookup could have handed a healer the mana-restore skill instead of the actual
+  heal once a unit had two ally-targeting Skill Moves. Also shipped
+  `Assets/Shaders/ChromaKeyVideo.shader` and `BattleClipPlayer.cs` -- a reusable,
+  chroma-keyed `VideoPlayer` component per unit, wired into `BattleVisuals`/
+  `BattleController` for the true basic attack only (Skill Moves share one placeholder
+  clip key today and would show the wrong clip). This is live today against the 3 real
+  clips M1/M2 already generated, not just scaffolding. Found a separate real bug along
+  the way: the `impactFrames` metadata on the existing Clip assets is corrupted
+  (`12000000` where `12` was surely meant) -- doesn't block anything since playback
+  doesn't depend on it, but needs fixing (or the clips regenerating) before
+  frame-accurate impact sync is worth building. 9 new EditMode tests (`MpRegenTests.cs`
+  plus `BattleAssetContentTests` additions), all pure C#, all safe headless.
+- **M11 — Skill Moves reach the game; content guard; SM tap.** M10's 9-skill system
+  existed only as C# inside `BattleAssetBuilder` — the menu command that writes it to
+  the ScriptableObjects was never run, so every character shipped with an empty
+  `skillMoves` list. In-game that read as three separate bugs (SM permanently greyed
+  out, no skills 1-3, mana bar never moving); all three were the same cause. Fixed by
+  building the assets, then by three layers so it can't recur: `BattleContentGuard`
+  (an `[InitializeOnLoad]` hook that re-runs the builder whenever `Resources/Battle`
+  goes stale, and hard-bails in batchmode so it can't trip the asset-corruption bug),
+  `BattleAssetContentTests` (7 tests reading the *built* assets — every other test in
+  the suite builds objects in memory and so passed happily while the shipped content
+  was empty), and a boot-time error naming any character with no Skill Moves. Also
+  fixed: every ally-targeting skill rendered as "Heal" in the SM popup (Kestrel's list
+  read *Heal / Heal / Power Strike*), a latent `??`-on-a-`UnityEngine.Object` in the
+  map-background fallback, and SM's press-and-hold gesture — now a plain tap, since
+  holding read as an unresponsive button next to BA/R/S.
+- **M10 — Camera bugfix, Skill Move system, compact action UI, melee movement.** Found
+  and fixed a real bug that predated M9: `BattleBootstrap`/`FarmBootstrap` never
+  attached a `Camera` at all, because `??` doesn't detect Unity's "fake null" the way
+  `== null` does. Replaced the old two-skill model with a free "BA" plus 3 mana-cost
+  Skill Moves per archetype (9 new skills, heal/damage primitives only). Manual mode's
+  action menu became 4 small icons (BA/SM/R/S) anchored under the acting character,
+  melee attackers now walk up to their target, and the Settings panel gained
+  damage/MP-cost dev-tuning sliders.
+- **M9 — Frontline succession, bench, reposition, 2-map sequence.** A faction's
+  formation auto-compacts when its frontmost unit dies. Three bench reserves
+  (Thorne/Reed/Vesper) can be subbed in for an active unit, and allies can swap
+  columns — both cost the turn. Healers gained an attack alongside their heal, and a
+  map-1 victory carries the wounded party's HP into map 2.
+
 ## v0.4.0-battle-slice — M0-M8 (2026-08-16)
 
 The full vertical slice: a playable, real-art, side-view party battle with auto and

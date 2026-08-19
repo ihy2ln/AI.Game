@@ -33,9 +33,19 @@ an active unit for one of 3 bench reserves, costs the turn), **reposition** (swa
 with an adjacent ally, costs the turn), **healers that can also attack**, and a **2-map
 battle sequence** (win map 1, the wounded party carries its HP into map 2).
 
-M10 (this session) replaces the old two-skill model with a real **Skill Move (SM)
+M11 (this session) is the milestone where M10's Skill Move content **actually reached
+the game**. It had been written entirely as C# inside `BattleAssetBuilder` and never
+built into the ScriptableObjects, so every character shipped with an empty `skillMoves`
+list -- which showed up in play as three apparently separate bugs (SM icon permanently
+greyed out, skills 1-3 missing, mana bar never moving) that were all the same cause.
+Fixed, then guarded three ways so it can't recur: an Editor-load auto-rebuild
+(`BattleContentGuard`), 7 tests that read the *built* assets rather than in-memory
+objects, and a boot-time error naming any character with no Skill Moves. SM also
+changed from press-and-hold to a **tap**. See item 8 below.
+
+M10 replaces the old two-skill model with a real **Skill Move (SM)
 system**: every unit has a free "BA" (Basic Attack) plus 3 mana-cost Skill Moves,
-accessed via **press-and-hold on the compact SM icon**. The manual-mode action menu is
+accessed via the compact SM icon. The manual-mode action menu is
 now 4 small icons (**BA / SM / R / S**) anchored right under the acting character
 instead of a full-width panel, and melee-flavoured attacks now have the attacker walk up
 to the target instead of both units jumping to generic stage marks. See "What changed"
@@ -162,14 +172,127 @@ via automation.
      (0x-2x) multipliers applied in `ResolveAction`, and an MP-cost multiplier (0x-2x,
      0x = free Skill Moves) for testing skills repeatedly without waiting on regen
      (there isn't any yet -- MP only ever decreases once spent).
+8. **Skill Moves actually shipped, content-staleness guard, SM tap -- M11.** Everything
+   in item 7's Skill Move system was real, compiled, and unit-tested, and **none of it
+   was in the game.** `BattleAssetBuilder` authors the 9 skills in C#, but
+   `AI.Game > Battle > Build Assets From Manifest` was never run, so every
+   `CharacterDefinition` on disk still had an empty `skillMoves` list. Three symptoms,
+   one cause: `BattleHud.DrawActionMenu` enables SM on `SkillMoveOptions.Count > 0`
+   (empty -> greyed out forever, with no explanation surfaced anywhere), and
+   `BattleController.ChooseAutoSkill` looks in `skillMoves` for a `targetsAllies` entry
+   to decide whether a healer heals (empty -> always fell through to the free 0-MP BA,
+   so no unit ever spent MP and the bar looked broken).
+   **Why nothing caught it:** every existing test builds its subjects in memory via
+   `BattleTestHelpers.MakeUnit` (`ScriptableObject.CreateInstance`), so the whole
+   22-test suite passed against correct logic while the shipped content was empty.
+   Nothing read `Resources/Battle`. Fixed in three layers:
+   - **`BattleContentGuard.cs`** (new, `Scripts/Editor/`) -- `[InitializeOnLoad]` hook
+     that checks on every Editor load whether `Resources/Battle` matches what the
+     builder currently authors and re-runs `BattleAssetBuilder.Build()` if not. Two
+     independent staleness checks: a `ContentVersion` stamp in `EditorPrefs` (catches
+     "builder C# is newer than disk") and a direct probe of the loaded
+     `CharacterDefinition`s (catches "the assets are wrong right now" regardless of the
+     stamp -- e.g. after a `git revert` of `Resources/Battle`). **Hard-bails on
+     `Application.isBatchMode`**, so it can never fire in the headless path that
+     corrupts `m_Script` references (see "Known gaps"). Bump
+     `BattleAssetBuilder.ContentVersion` whenever the authored content changes shape.
+   - **`BattleAssetContentTests.cs`** (new, 7 tests) -- asserts against the real assets
+     via `Resources.Load`. Covers: free BA with a pattern on every character; exactly 3
+     distinct Skill Moves each (distinct `skillId` *and* `displayName`, see below);
+     every move affordable from a full MP pool with at least one costing MP; healers
+     attack with BA and heal from `skillMoves`; melee BAs not flagged `isRanged` (which
+     would silently lose the walk-up animation); the 3 AoE patterns really covering more
+     than one column; both maps fielding 3 enemies with a background.
+   - **`BattleWorld.WarnOnStaleContent`** -- `Debug.LogError` at boot naming any
+     character with no Skill Moves. A standalone build has its assets already baked and
+     the guard can't help there, so a loud log line is the only available signal.
+
+   Two more real bugs found on the way, both caught by inspecting the rebuilt assets
+   rather than by playing:
+   - **Every ally-targeting skill displayed as "Heal."** `DrawSkillListPopup` labelled
+     rows `skill.targetsAllies ? "Heal" : skill.displayName`, so Kestrel's SM list
+     rendered as *Heal (30 MP) / Heal (25 MP) / Power Strike* -- Second Wind and Rally
+     both masquerading as Heal -- and Linnet's as *Heal / Heal / Heal*. `targetsAllies`
+     means "aims at my side," not "is the heal." Now always `displayName`, and the
+     `Skill_SupportBasic` asset was renamed from "Support Basic Attack" to "Heal"
+     (`skillId: skill_support_heal`) since it's no longer anyone's basic attack.
+   - **Another latent `??`-on-a-`UnityEngine.Object`** -- `LoadBackgroundSprite(...) ??
+     manifestBackground` in `BattleAssetBuilder`, the same trap as item 7's camera bug.
+     Harmless today (both backgrounds exist) but it would have silently skipped the
+     fallback the moment one didn't. Replaced with an `OrFallback<T>` helper using
+     Unity's overloaded `== null`.
+
+   **SM is a tap now.** Press-and-hold became `_showSkillList = !_showSkillList`, and
+   the whole hold apparatus (`SmHoldSeconds`, `_smButtonRect`, `_smHoldStartTime`, and
+   the `Update()` polling behind them) is gone. Holding read as an unresponsive button:
+   tapping SM did nothing and nothing on screen hinted that holding was the gesture,
+   especially with BA/R/S all being taps. Tapping again closes the list, which is also
+   the only way to back out without committing to a skill.
+9. **MP economy (a first pass) and FMV chroma-key components -- M12.** Direction from
+   the project owner: verify Skill Moves by code-based stats rather than interactive
+   play (item 1 below), then build a real MP economy using arbitrary numbers (not a
+   tuned balance pass), and build the chroma-key/VideoPlayer plumbing FMV clips need
+   even though final clip assets/pipeline aren't chosen yet.
+   - **MP economy.** `BattleUnit` gained `SpendMp`/`RestoreMp` (both clamp to
+     `[0, MaxMp]`), `RestoreMpFull`, and `RecoverMpAfterBattle`. Four sources, per the
+     project owner's design: (1) a small passive trickle from the true BA specifically
+     (`BasicAttackMpRegen = 4`, gated on `skill == unit.Definition.standardSkill` so a
+     Skill Move that happens to cost 0 MP via the dev-tuning slider can't be farmed for
+     it); (2) 25%-50% of the *missing* MP restored per unit when a carried-over roster
+     loads map 2 (`BattleWorld`'s existing carry-over path -- deliberately distinct from
+     HP, which still does not recover between maps, since the carried wound is the
+     point); (3) a full restore hook (`RestoreMpFull`) for a future farm/town "sleep to
+     recover" system -- not called by anything yet, since no persistence layer connects
+     battle party state to the farm scene; (4) a new Support Skill Move, **Mana Spring**
+     (15 MP, restores ~20 MP to an ally at Linnet's base magic), the first skill to use
+     a new `SkillDefinition.restoresMana` flag that routes `BattleController
+     .ResolveAction`'s ally-targeting branch to `DamageCalculator.ComputeManaRestore`
+     instead of `ComputeHeal`. Found and fixed a real bug while adding it:
+     `ChooseAutoSkill`'s auto-heal lookup (`skillMoves.FirstOrDefault(s =>
+     s.targetsAllies)`) would just as easily have handed auto mode Mana Spring instead
+     of the real heal once a second ally-targeting move existed on the same unit --
+     fixed by excluding `restoresMana` from that filter.
+   - **FMV chroma-key components.** `Assets/Shaders/ChromaKeyVideo.shader` (Unlit,
+     discards pixels near `ClipEntry.chromaKey` within `chromaTolerance`, `Cull Off` so
+     a facing-flipped quad still renders) and `BattleClipPlayer.cs` (one per unit view,
+     built inactive in `BattleVisuals.BuildUnitView`; owns a `VideoPlayer` targeting a
+     `RenderTexture` fed into a runtime quad using that shader). `BattleVisuals` exposes
+     `HasActionClip`/`PlayActionClip`; `BattleController.PlayImpactBeat` (new, replacing
+     a wait that was duplicated verbatim in both turn-flow methods) plays the clip when
+     one exists, else falls back to the original flat pause. **Deliberately restricted
+     to the true BA only** -- every Skill Move currently shares `clipKey: "basicAttack"`
+     (`BattleAssetBuilder.BuildSkillMove`), so playing it for e.g. Power Strike would
+     show the wrong (generic melee-swing) clip; Skill Moves keep the sprite+flash/
+     impact-FX presentation until they get dedicated clips. This is reachable *today*
+     with the 3 real clips M1/M2 already generated (`clip_melee_basic`/`clip_ranged_
+     basic`/`clip_heal_basic`, imported and referenced by `Clips_MeleeBasic`/etc.) --
+     not just scaffolding for hypothetical future assets.
+     **Found a real, separate bug while building this:** the `impactFrames` metadata
+     baked into those Clip assets reads as corrupted -- `Clips_MeleeBasic`'s is
+     `12000000` where a 24fps clip a few seconds long should read `12`; `Clips_
+     SupportBasic`'s concatenates two values the same way (`10`+`18` → `1000000018000000`).
+     Almost certainly a manifest/`generate.py` authoring bug from M1/M2, not anything
+     touched this session. `BattleClipPlayer` fails safe against it (a threshold that's
+     never reached just never fires `onImpact`, no crash), and the current wiring
+     doesn't depend on it being correct -- `PlayImpactBeat` uses the clip's own runtime
+     as the hold duration, not frame-accurate sync, so this doesn't block anything today.
+     Worth fixing (or just regenerating the clips) before impact-frame sync is worth
+     building on top of.
+   - **Item 1: code-based skill verification, not interactive play.** Two new test
+     files, `MpRegenTests.cs` (7 tests: spend/restore clamping, the 25%-50% recovery
+     band via 50 rolls, `ComputeManaRestore` scaling) and additions to
+     `BattleAssetContentTests.cs` (`SupportUnits_HaveAnAffordableManaRestoreSkill`,
+     asserting a real `ComputeManaRestore` value against Linnet's actual base stats,
+     plus the Support archetype's expected Skill Move count moving from 3 to 4). All
+     pure C#, all safe headless. `BattleAssetBuilder.ContentVersion` bumped to 4.
 
 ## Roster
 
-| Unit | Role | Faction | BA (free) | Skill Moves (mana, hold SM) |
+| Unit | Role | Faction | BA (free) | Skill Moves (mana, tap SM) |
 |---|---|---|---|---|
 | **Kestrel** | Melee | Player | Melee Basic Attack, 1 col | Second Wind (self-heal, 30MP) / Rally (heal ally, 25MP) / Power Strike (heavy hit, 35MP) |
 | **Sable** | Ranged | Player | Ranged Basic Attack, any col | Volley (3-wide AoE, 25MP) / Snipe (heavy hit, 30MP) / Barrage (full-team AoE, 45MP) |
-| **Linnet** | Support | Player | Support Strike (low power attack) | Heal (20MP) / Mass Heal (AoE heal, 35MP) / Focus Heal (big heal, 30MP) |
+| **Linnet** | Support | Player | Support Strike (low power attack) | Heal (20MP) / Mass Heal (AoE heal, 35MP) / Focus Heal (big heal, 30MP) / Mana Spring (restore ally MP, 15MP) |
 | **Husk** | Melee | Enemy | same as Kestrel's archetype | same as Kestrel's archetype |
 | **Warden** | Ranged | Enemy | same as Sable's archetype | same as Sable's archetype |
 | **Stinger** | Support | Enemy | same as Linnet's archetype | same as Linnet's archetype |
@@ -180,8 +303,15 @@ action, same archetype stats/BA/Skill Moves as their active counterpart, distinc
 **Vesper** (Support, reskin of Linnet's).
 
 Skill Move content is heal/damage primitives only (no status-effect system yet -- an
-explicit scope decision this session, see item 7 above). All 9 non-BA skills, plus the
-relocated Heal, live in `CharacterDefinition.skillMoves`; `standardSkill` is always BA.
+explicit scope decision, see item 7 above). All 10 non-BA skills, plus the relocated
+Heal and M12's Mana Spring, live in `CharacterDefinition.skillMoves`; `standardSkill`
+is always BA.
+
+**MP has a first-pass economy now (M12), not a tuned one.** Sources: a small trickle
+(+4) from a unit's own BA, 25%-50% of missing MP restored per unit between maps 1 and
+2 (HP still doesn't recover there -- see `BattleWorld`'s carry-over doc), and Mana
+Spring as an active, targeted top-up. There's still no per-turn passive regen and no
+potion/item system (no inventory exists in this slice at all) -- see "Known gaps."
 
 ## Milestones — all done
 
@@ -198,6 +328,8 @@ relocated Heal, live in `CharacterDefinition.skillMoves`; `standardSkill` is alw
 | M8 | Pause, settings, multi-step undo/redo, dock-spacing bugfix | *(not yet tagged)* |
 | M9 | Frontline succession, bench sub-in/out, reposition, healer attacks, 2-map sequence | *(not yet tagged)* |
 | M10 | Camera bug fix, Skill Move system (9 skills), compact action UI, melee movement | *(not yet tagged)* |
+| M11 | Skill Moves built into the assets, content guard + asset-level tests, SM tap, duplicate-label fix | *(not yet tagged)* |
+| M12 | MP economy (BA trickle, between-map recovery, Mana Spring), FMV chroma-key components, code-based Skill Move tests | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -210,10 +342,11 @@ precedent: commit + docs update, no snapshot/zip.
 
 `T` toggle auto/manual mode · `L` open/close the turn log · `Esc` pause ·
 `Ctrl+Z`/`Ctrl+Y` undo/redo last turn · `R` restart after the battle ends · `?` keybind
-legend. Manual mode: a player unit's turn opens a small 4-icon menu under their feet --
-**BA** (tap, free basic attack), **SM** (press and hold ~0.35s to open the Skill Move
-list, mana-cost), **R** (tap, Reposition), **S** (tap, Sub) -- then click a highlighted
-target on the field (BA/SM/Reposition) or pick from the popup (SM's list, Sub's bench).
+legend. Manual mode: a player unit's turn opens a small 4-icon menu under their feet,
+all four tapped -- **BA** (free basic attack), **SM** (opens the mana-cost Skill Move
+list; tap again to close it), **R** (Reposition), **S** (Sub) -- then click a
+highlighted target on the field (BA/SM/Reposition) or pick from the popup (SM's list,
+Sub's bench).
 
 ## How to run it
 
@@ -311,14 +444,13 @@ target on the field (BA/SM/Reposition) or pick from the popup (SM's list, Sub's 
   stale — this file and the wiki are current as of the move.
 - **No `adb` on this machine** — M5's on-device install/verification is genuinely
   blocked here, not skipped out of laziness. Needs a different machine/session.
-- **GitHub wiki push still blocked** as of last check. GitHub only provisions a
-  repo's wiki git backend after a page is saved once through the web UI — there's no
-  API/git-push way around it. The 4 wiki pages (Home, Battle-System, Art-Pipeline,
-  Roadmap) are written and committed locally at `S:\AI\Game\AI.Game.wiki\` (a
-  separate git clone, not part of the main repo), ready to push the moment
-  https://github.com/ihy2ln/AI.Game/wiki has its first page created (one click, "Create
-  the first page", any content). Then: `cd "S:\AI\Game\AI.Game.wiki" && git push -u
-  origin master`.
+- **GitHub wiki is unblocked** (was blocked through M9 — GitHub only provisions a
+  repo's wiki git backend after a page is saved once through the web UI, with no
+  API/git-push way around it; the project owner has since created that first page). The
+  4 pages (Home, Battle-System, Art-Pipeline, Roadmap) live at
+  `S:\AI\Game\AI.Game.wiki\` — a **separate git clone**, not part of the main repo, so
+  it needs its own commit + push alongside the main one:
+  `cd "S:\AI\Game\AI.Game.wiki" && git add -A && git commit && git push`.
 - **Automation still can't drive the standalone exe's window directly** (see the two
   items above for why, and why it no longer matters much: the project owner's own
   interactive Editor session covers this better than automation ever could). Synthetic
@@ -342,35 +474,53 @@ target on the field (BA/SM/Reposition) or pick from the popup (SM's list, Sub's 
   a placeholder. Low priority now that the roster uses curated HD art instead.
 - **M4 has no snapshot/zip** under `AI.Game Commits/battle-slice/` (see Milestones
   table) — the commit/tag/push happened, just not the extra per-section copy step.
-- **M10's 9-skill Skill Move content is code-complete but not yet confirmed running.**
-  `BattleAssetBuilder.Build()` needs to run (`AI.Game → Battle → Build Assets From
-  Manifest`, from inside the already-open interactive Editor -- see above) to actually
-  populate `CharacterDefinition.skillMoves` on every character; as of the last check
-  this session the on-disk character assets still had none of it (verified by grepping
-  `Char_player_melee.asset` for `skillMoves`/`maxMp` and finding neither key). The
-  camera bug and the action-menu/MP-bar bugs above were all found and fixed via real
-  interactive play *before* this rebuild happened, so those are confirmed; the skill
-  content itself, and the melee-approach movement, are not yet confirmed by the project
-  owner actually seeing them run.
+- **Resolved in M11: the 9-skill Skill Move content is now actually built into the
+  assets** (verified on disk -- all 12 skill assets and 7 patterns present, all 9
+  characters carrying `maxMp: 100` and 3 `skillMoves` references, **zero
+  `m_Script: {fileID: 0}` corruption**), and `BattleContentGuard` re-runs the builder
+  automatically whenever it goes stale, so "authored in C#, never written to disk" can't
+  silently recur. That rebuild also ran through an interactive Editor session and came
+  out clean, which is further evidence for the "interactive is safe, headless
+  `-executeMethod` isn't" hypothesis below.
+- **Resolved in M12: a first-pass MP economy exists** (BA trickle, between-map partial
+  recovery, Mana Spring) -- see item 9 above. Still open: no *per-turn* passive regen
+  (a unit that dumps its whole pool mid-battle is genuinely tapped out until the next
+  map), and no potion/item system -- the project owner named "recover through ... a
+  potion-like item" as a goal, but there's no inventory system in this slice at all to
+  hang it on. `BattleUnit.RestoreMp(int)` is the primitive a future item system should
+  call; nothing else about it exists yet. `RestoreMpFull()` is similarly just a hook --
+  no farm/town "sleep" system calls it, since no persistence layer connects battle party
+  state to the farm scene.
+- **FMV clip `impactFrames` metadata is corrupted on disk** (found building M12's
+  chroma-key components) -- `Clips_MeleeBasic`'s reads `12000000` where `12` is surely
+  meant, `Clips_SupportBasic`'s concatenates two values the same way. Almost certainly a
+  `Tools/ComfyUI/generate.py` authoring bug from M1/M2. Doesn't block anything today
+  (`BattleClipPlayer` fails safe against it, and `BattleController.PlayImpactBeat`
+  doesn't attempt frame-accurate sync yet), but should be fixed -- or the clips
+  regenerated, per the project owner's plan to possibly redo them anyway -- before any
+  future work tries to sync a visual effect to a clip's impact frame.
 
 ## Natural next steps, roughly in priority order
 
-1. **Run `AI.Game → Battle → Build Assets From Manifest`** from the already-open
-   interactive Editor (not headless), then Play and actually test the 9-skill Skill
-   Move system (hold SM, spend mana, watch Mass Heal/Barrage hit multiple targets) and
-   the melee-approach movement -- the one piece of M10 not yet confirmed running (see
-   the gap above). Frontline succession, sub/reposition, healer attacks, and the
-   map-1→map-2 transition (M9) plus the camera fix/action-menu/MP-bar fixes (M10) are
-   all confirmed working via the project owner's own interactive play this session.
-2. Wire FMV clips into `BattleVisuals` (chroma-key shader + `VideoPlayer`, sync to
-   `ClipEntry.impactFrames`) — closes out the original three-layer renderer design.
-3. Get the wiki unblocked (needs the project owner's one click, or a working Claude
-   in Chrome connection to do it directly).
-4. On-device Android verification, whenever a session has `adb` access.
-5. Consider a real status-effect system if future Skill Moves need to go beyond
-   heal/damage (buffs, shields, taunt) — explicitly deferred this session, see item 7
+1. **Rebuild in the interactive Editor and re-run the tests.** M12's content (Mana
+   Spring) needs the same `BattleContentGuard` auto-rebuild M11 relies on -- open the
+   Editor once, then headless `-runTests` should go 37/37 instead of 35/37.
+2. **Fix or regenerate the FMV clips' `impactFrames` metadata** (see "Known gaps") --
+   the current values are unusable, and it's the one thing standing between today's
+   duration-only clip playback and real frame-accurate impact sync.
+3. **A potion/item system**, if the project owner wants the third MP-recovery source
+   from M12's design to actually exist -- needs an inventory concept this slice doesn't
+   have at all yet, so it's a bigger lift than the other two economy pieces were.
+4. **A per-turn passive MP regen tick**, if between-map recovery alone proves too
+   sparse in practice once the project owner plays a few battles.
+5. Choose/build final FMV clip assets (Unity Asset Store base or new ComfyUI
+   generations, per the project owner's plan) once the components above are solid --
+   the plumbing is ready, only the content is placeholder.
+6. On-device Android verification, whenever a session has `adb` access.
+7. Consider a real status-effect system if future Skill Moves need to go beyond
+   heal/damage (buffs, shields, taunt) — explicitly deferred in M10, see item 7
    under "What changed."
-6. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
+8. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
    reserves, no save/persistence. FOUNDATION.md's broader systems (tier/fusion, gacha,
    farm/town economy) are designed but not connected to this battle system yet —
    that's the actual "rest of the game," this slice only proves the battle screen works.

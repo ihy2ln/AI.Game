@@ -30,8 +30,12 @@ MonoBehaviour:
   costLateral: 2
   costForward: 1
   costPerHeightLevel: 1
+  maxMp: 100
   standardSkill: {fileID: 11400000, guid: 3414f42122b89414d8b03a10c2dd8714, type: 2}
-  secondarySkill: {fileID: 0}
+  skillMoves:
+  - {fileID: 11400000, guid: bd635e31b626e5a419991276ee98fe4b, type: 2}
+  - {fileID: 11400000, guid: bb1c915c7c902004fbd24d4026c84334, type: 2}
+  - {fileID: 11400000, guid: 89869a534bed8df46848f179dc435766, type: 2}
   classSkillPool: []
   elementSkillPool: []
   growthPerLevel: 0.06

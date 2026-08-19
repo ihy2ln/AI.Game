@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ba9d5eb2cf0efae4bb0f413fb8160851, type: 3}
   m_Name: Skill_SupportAttackBasic
   m_EditorClassIdentifier: Game.Data::Game.Data.SkillDefinition
-  skillId: skill_support_attack_basic
+  skillId: skill_supportattackbasic
   displayName: Support Strike
   description: 
   pool: 0
@@ -25,5 +25,6 @@ MonoBehaviour:
   usesMagic: 0
   isRanged: 0
   targetsAllies: 0
+  restoresMana: 0
   clipKey: basicAttack
   rollWeight: 1

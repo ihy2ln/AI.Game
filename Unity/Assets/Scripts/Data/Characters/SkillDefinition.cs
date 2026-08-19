@@ -42,6 +42,11 @@ namespace Game.Data
         [Tooltip("True for heals/buffs: TargetResolver offers the caster's own faction instead of the opposing one.")]
         public bool targetsAllies;
 
+        [Tooltip("Only meaningful when targetsAllies is true: restores the target's MP "
+            + "(via power * caster magic, same formula as a heal) instead of HP. "
+            + "BattleController.ResolveAction branches on this within the targetsAllies path.")]
+        public bool restoresMana;
+
         [Header("Presentation")]
         [Tooltip("Key into the character's ClipSet.")]
         public string clipKey;

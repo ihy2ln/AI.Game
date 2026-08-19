@@ -73,6 +73,12 @@ namespace Game.Battle
         const float PreActionDelaySeconds = 0.35f;
         const float ImpactHoldSeconds = 0.5f;
 
+        /// <summary>"very small amount back" per project owner direction on the MP-economy
+        /// design -- an arbitrary number, not a tuned one. Only the true BA (skill ==
+        /// unit.Definition.standardSkill) grants this, so it can't be farmed by a Skill
+        /// Move that happens to cost 0 MP (e.g. the dev-tuning MpCostMultiplier slider at 0x).</summary>
+        const int BasicAttackMpRegen = 4;
+
         public void Init(BattleWorld world, BattleVisuals visuals, Camera cam, BattleSettings settings)
         {
             World = world;
@@ -269,7 +275,7 @@ namespace Game.Battle
             var target = targets[UnityEngine.Random.Range(0, targets.Count)];
             yield return IsMeleeAction(skill) ? _visuals.MoveToMelee(unit, target) : _visuals.MoveToStage(unit, target);
             var hitTargets = ResolveAction(unit, skill, target);
-            yield return new WaitForSeconds(ImpactHoldSeconds);
+            yield return PlayImpactBeat(unit, skill);
             yield return _visuals.ReturnToDock(unit, target);
             foreach (var faction in DeadFactionsAmong(hitTargets)) yield return _visuals.ReflowFormation(World, faction);
         }
@@ -289,7 +295,12 @@ namespace Game.Battle
                 return null;
             }
 
-            var healMove = unit.Definition.skillMoves.FirstOrDefault(s => s != null && s.targetsAllies);
+            // !restoresMana excludes Mana Spring (M12) -- without it, FirstOrDefault could
+            // just as easily hand auto mode the mana-restore skill instead of the actual
+            // heal whenever list order put it first, and a "healer" that tops up MP while
+            // an ally bleeds out reads as broken, not clever. Mana Spring stays manual-only,
+            // like the rest of skillMoves beyond this one auto-heal carve-out.
+            var healMove = unit.Definition.skillMoves.FirstOrDefault(s => s != null && s.targetsAllies && !s.restoresMana);
             if (healMove != null && unit.CurrentMp >= healMove.mpCost)
             {
                 bool allyNeedsHeal = World.AllUnits.Any(u =>
@@ -339,7 +350,7 @@ namespace Game.Battle
                     var target = _submittedTarget;
                     yield return IsMeleeAction(_chosenSkill) ? _visuals.MoveToMelee(unit, target) : _visuals.MoveToStage(unit, target);
                     var hitTargets = ResolveAction(unit, _chosenSkill, target);
-                    yield return new WaitForSeconds(ImpactHoldSeconds);
+                    yield return PlayImpactBeat(unit, _chosenSkill);
                     yield return _visuals.ReturnToDock(unit, target);
                     foreach (var faction in DeadFactionsAmong(hitTargets)) yield return _visuals.ReflowFormation(World, faction);
                     break;
@@ -388,12 +399,27 @@ namespace Game.Battle
         List<BattleUnit> ResolveAction(BattleUnit unit, SkillDefinition skill, BattleUnit target)
         {
             int mpSpent = EffectiveMpCost(skill);
-            if (mpSpent > 0) unit.CurrentMp = Mathf.Max(0, unit.CurrentMp - mpSpent);
+            if (mpSpent > 0)
+                unit.SpendMp(mpSpent);
+            else if (skill == unit.Definition.standardSkill)
+                unit.RestoreMp(BasicAttackMpRegen);
 
             bool isAoe = skill.pattern != null && skill.pattern.areaOffsets.Count > 1;
             var hitTargets = isAoe
                 ? TargetResolver.GetAreaTargets(unit, skill, target.Column, World.AllUnits)
                 : new List<BattleUnit> { target };
+
+            if (skill.targetsAllies && skill.restoresMana)
+            {
+                foreach (var ally in hitTargets)
+                {
+                    int restored = DamageCalculator.ComputeManaRestore(unit, skill);
+                    ally.RestoreMp(restored);
+                    LogLine($"{unit.Definition.displayName} restores {restored} MP to {ally.Definition.displayName}.");
+                    if (Settings.ShowDamageNumbers) SpawnDamageNumber(ally, $"+{restored} MP", new Color(0.45f, 0.65f, 0.95f));
+                }
+                return hitTargets;
+            }
 
             if (skill.targetsAllies)
             {
@@ -430,6 +456,18 @@ namespace Game.Battle
                 }
             }
             return hitTargets;
+        }
+
+        /// <summary>The post-hit beat between ResolveAction and ReturnToDock: plays the
+        /// action's FMV clip when one exists (M12), otherwise the original flat pause.
+        /// Shared by both RunAutoTurn and RunManualPlayerTurn -- was duplicated verbatim
+        /// as `yield return new WaitForSeconds(ImpactHoldSeconds);` in both before this.</summary>
+        IEnumerator PlayImpactBeat(BattleUnit unit, SkillDefinition skill)
+        {
+            if (_visuals.HasActionClip(unit, skill))
+                yield return _visuals.PlayActionClip(unit, skill, onImpact: null);
+            else
+                yield return new WaitForSeconds(ImpactHoldSeconds);
         }
 
         static IEnumerable<Faction> DeadFactionsAmong(IEnumerable<BattleUnit> hitTargets) =>

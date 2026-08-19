@@ -72,8 +72,12 @@ namespace Game.Battle
             if (carryOverPlayer != null)
             {
                 // Reuse the same BattleUnit objects (preserves CurrentHp/Mp) -- drop the
-                // dead, reassign columns 0..2 in prior front-to-back order.
+                // dead, reassign columns 0..2 in prior front-to-back order. HP does NOT
+                // recover here (the carried wound is the point of the 2-map sequence) but
+                // MP gets a partial "caught our breath" top-up -- see BattleUnit
+                // .RecoverMpAfterBattle.
                 var survivors = carryOverPlayer.Where(u => u.IsAlive).OrderBy(u => u.Column).ToList();
+                foreach (var unit in survivors) unit.RecoverMpAfterBattle();
                 for (int i = 0; i < survivors.Count; i++) survivors[i].Column = i;
                 AllUnits.AddRange(survivors);
             }
@@ -94,6 +98,7 @@ namespace Game.Battle
 
             if (carryOverBench != null)
             {
+                foreach (var unit in carryOverBench) unit.RecoverMpAfterBattle();
                 Bench.AddRange(carryOverBench);
             }
             else
@@ -120,6 +125,28 @@ namespace Game.Battle
             }
 
             LoadedOk = AllUnits.Count > 0;
+            WarnOnStaleContent();
+        }
+
+        /// <summary>Surfaces the one failure mode that otherwise looks like a UI bug: a
+        /// CharacterDefinition built before the Skill Move system existed has an empty
+        /// skillMoves list, so manual mode's "SM" button greys out and auto mode silently
+        /// falls back to the free 0-cost BA forever (MP never drains). In the Editor
+        /// BattleContentGuard rebuilds these automatically; in a standalone build the
+        /// assets are already baked, so a loud log line is all we can do.</summary>
+        void WarnOnStaleContent()
+        {
+            var stale = AllUnits.Concat(Bench)
+                .Select(u => u.Definition)
+                .Distinct()
+                .Where(d => d.skillMoves == null || !d.skillMoves.Any(s => s != null))
+                .Select(d => d.displayName)
+                .ToList();
+
+            if (stale.Count == 0) return;
+            Debug.LogError($"[AI.Game] {stale.Count} character(s) have no Skill Moves: {string.Join(", ", stale)}. "
+                + "Their SM button will be greyed out and they'll never spend MP. Run "
+                + "AI.Game > Battle > Build Assets From Manifest from an interactive Editor.");
         }
     }
 }
