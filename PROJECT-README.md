@@ -581,27 +581,26 @@ potion slots).
   call; nothing else about it exists yet. `RestoreMpFull()` is similarly just a hook --
   no farm/town "sleep" system calls it, since no persistence layer connects battle party
   state to the farm scene.
-- **Resolved: FMV clip `impactFrames` metadata hand-fixed.** `Clips_MeleeBasic`/
-  `RangedBasic`/`SupportBasic` had `impactFrames: 12000000` etc. -- a bare scalar,
-  where every other `List<int>` in this project's assets serializes as a normal YAML
-  block list, holding a value in the millions where the manifest's own ground-truth
-  data (`Tools/ComfyUI/manifest.export.json`, `impact_frames: [18]` etc.) says a small
-  one. **Root cause not fully confirmed** -- the JSON itself is clean and
-  `BattleAssetBuilder.BuildClipSet`'s logic (`new List<int>(clipAsset.impact_frames)`)
-  looks correct by inspection, and the corrupted values were byte-for-byte identical
-  across two independent `Build()` runs months apart (confirmed via `git log` on
-  `Clips_MeleeBasic.asset` — untouched since the M3 commit despite M11's rebuild
-  running `BuildClipSet` unconditionally), which rules out a stale-manifest
-  explanation. A `JsonUtility` array-parsing edge case is suspected but unproven — a
-  live diagnostic (`JsonUtility.FromJson` dumped via a throwaway EditMode test) was the
-  next step but couldn't run this session (the interactive Editor was open, and
-  headless can't share the project lock). **Fixed directly**: hand-edited the 3 asset
-  files to the manifest's real values (melee 18, ranged 22, heal 16+24) in correct
-  block-list YAML. `ClipMetadataTests.cs` (new) asserts every impact frame is under a
-  sane bound (10,000) and would fail loudly if this regresses -- including from a
-  future `Build Assets From Manifest` re-run, if the underlying bug turns out to still
-  be live. **Run that test once Unity is closed** to confirm the fix holds; it hasn't
-  been run yet this session.
+- **Resolved (for real this time): FMV clip `impactFrames`.** First hand-fixed during
+  M12 (see CHANGELOG for that writeup) -- then **regressed back to the exact same
+  corrupted values, byte-for-byte identical, the very next time the project owner
+  rebuilt in the interactive Editor for M13.** That's the key finding: a hand-edit of
+  the built asset alone never sticks, because `BattleAssetBuilder.BuildClipSet`
+  unconditionally overwrites `impactFrames` from `clipAsset.impact_frames` on every
+  `Build()` run, and that field deserializes to nonsense *deterministically* -- the
+  same wrong numbers every time, not random garbage, which rules out disk/session
+  corruption and points at something in the manifest-JSON parsing path itself
+  (`manifest.export.json`'s own data is clean and verified by hand: `[18]`, `[22]`,
+  `[16,24]`). Root cause still not confirmed (a `JsonUtility` array-parsing edge case
+  is suspected, never proven). **Real fix this time**: stopped trusting that field
+  entirely. `BattleAssetBuilder.KnownGoodImpactFrames` (new) authors the 3 known-correct
+  values directly in C#, the same way every other hand-tuned number in this builder
+  already is, bypassing the unreliable manifest field rather than trying to fix its
+  parsing. `ContentVersion` bumped to 6. **Not yet verified headlessly** -- the
+  project owner's Editor was open when this landed; `ClipMetadataTests.cs` needs one
+  more `-runTests` pass once it's closed to confirm the code fix actually produces
+  correct output on a fresh `Build()`, not just that the hand-patched files
+  (already reapplied) look right by inspection.
 
 ## Natural next steps, roughly in priority order
 

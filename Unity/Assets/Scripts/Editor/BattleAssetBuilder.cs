@@ -36,9 +36,11 @@ namespace Game.EditorTools
         /// 1 = pre-M10 (standardSkill only). 2 = M10 (maxMp + 3 skillMoves per archetype).
         /// 3 = the support heal renamed off "Support Basic Attack" to "Heal". 4 = M12's
         /// Mana Spring (Support's 4th skillMove, restoresMana). 5 = M13's 3 potion
-        /// assets (Battle/Potions/) and status effects on 5 existing Skill Moves.
+        /// assets (Battle/Potions/) and status effects on 5 existing Skill Moves. 6 =
+        /// impactFrames now authored in KnownGoodImpactFrames instead of read from the
+        /// manifest's unreliable impact_frames field.
         /// </summary>
-        public const int ContentVersion = 5;
+        public const int ContentVersion = 6;
 
         /// <summary>EditorPrefs key holding the ContentVersion last written to disk.
         /// Deliberately EditorPrefs rather than an asset in the repo: a fresh clone (or a
@@ -349,13 +351,31 @@ namespace Game.EditorTools
             return skill;
         }
 
+        /// <summary>Known-good impact-frame markers, authored directly here instead of
+        /// read from manifest.export.json's own impact_frames field (M13 finding). That
+        /// field's JSON is clean (verified by hand: [18], [22], [16,24]) but
+        /// clipAsset.impact_frames deserializes to nonsense -- millions, on clips a few
+        /// hundred frames long at most -- deterministically and reproducibly across
+        /// independent Build() runs months apart, so this isn't disk corruption and a
+        /// hand-edit of the built asset alone doesn't stick (the next Build() just
+        /// overwrites it again from the same bad source). Root cause unconfirmed --
+        /// suspected JsonUtility array-parsing edge case, never proven -- but bypassing
+        /// the unreliable field for these 3 known clips sidesteps it entirely. Extend
+        /// this table when new clips are added instead of trusting impact_frames again.</summary>
+        static readonly Dictionary<string, int[]> KnownGoodImpactFrames = new()
+        {
+            ["clip_melee_basic"] = new[] { 18 },
+            ["clip_ranged_basic"] = new[] { 22 },
+            ["clip_heal_basic"] = new[] { 16, 24 },
+        };
+
         static ClipSet BuildClipSet(ArchetypeSpec arch, ManifestAsset clipAsset, string unityRelRoot)
         {
             var clipSet = LoadOrCreate<ClipSet>($"{OutDir}/Clips/Clips_{arch.Name}Basic.asset");
             var entry = clipSet.clips.Find(c => c.key == "basicAttack") ?? new ClipEntry { key = "basicAttack" };
             entry.clip = LoadClip(clipAsset, unityRelRoot);
-            entry.impactFrames = clipAsset?.impact_frames != null
-                ? new List<int>(clipAsset.impact_frames)
+            entry.impactFrames = clipAsset != null && KnownGoodImpactFrames.TryGetValue(clipAsset.id, out var frames)
+                ? new List<int>(frames)
                 : new List<int>();
             entry.frameRate = clipAsset != null && clipAsset.fps > 0 ? clipAsset.fps : 24;
             entry.chromaKey = Color.green; // FOUNDATION.md: FMV clips are always keyed on solid #00FF00

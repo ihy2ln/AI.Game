@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b9aa2ba31fe5d4f4cbd4f26011cbe5b7, type: 3}
+  m_Name: Potion_Multi
+  m_EditorClassIdentifier: Game.Data::Game.Data.PotionDefinition
+  potionId: potion_multi
+  displayName: Multi Potion
+  description: 
+  icon: {fileID: 0}
+  kind: 2
+  rank: 3
+  maxStack: 99

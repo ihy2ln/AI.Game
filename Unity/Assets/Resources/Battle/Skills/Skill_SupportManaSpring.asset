@@ -26,5 +26,8 @@ MonoBehaviour:
   isRanged: 0
   targetsAllies: 1
   restoresMana: 1
+  inflictsStatus: 0
+  statusMagnitude: 0
+  statusDuration: 0
   clipKey: basicAttack
   rollWeight: 1
