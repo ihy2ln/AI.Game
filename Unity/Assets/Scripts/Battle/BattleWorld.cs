@@ -67,7 +67,7 @@ namespace Game.Battle
             }
 
             int seed = 0;
-            var noRollPool = new List<SkillDefinition>(); // only standardSkill/secondarySkill are used in this slice
+            var noRollPool = new List<SkillDefinition>(); // only standardSkill/skillMoves are used in this slice
 
             if (carryOverPlayer != null)
             {

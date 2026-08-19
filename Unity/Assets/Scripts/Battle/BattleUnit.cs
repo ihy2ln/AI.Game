@@ -22,6 +22,7 @@ namespace Game.Battle
 
         public bool IsAlive => CurrentHp > 0;
         public StatBlock Stats => Instance.EffectiveStats(Definition);
+        public int MaxMp => Definition.maxMp;
 
         public BattleUnit(CharacterDefinition def, CharacterInstance instance, Faction faction, int column, bool facingRight)
         {
@@ -31,7 +32,7 @@ namespace Game.Battle
             Column = column;
             FacingRight = facingRight;
             CurrentHp = Stats.hp;
-            CurrentMp = 0;
+            CurrentMp = Definition.maxMp;
         }
 
         public void ApplyDamage(int amount) => CurrentHp = Mathf.Max(0, CurrentHp - amount);

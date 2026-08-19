@@ -1,8 +1,10 @@
+using System.Collections.Generic;
 using UnityEngine;
+using Game.Data;
 
 namespace Game.Battle
 {
-    /// <summary>IMGUI HUD (no Canvas wiring), mirrors FarmHud's approach: HP bars,
+    /// <summary>IMGUI HUD (no Canvas wiring), mirrors FarmHud's approach: HP/MP bars,
     /// battle log line/review panel, damage numbers, win/lose banner, and the modern-UX
     /// layer -- pause menu, settings, undo/redo, keybind legend.</summary>
     public class BattleHud : MonoBehaviour
@@ -10,13 +12,19 @@ namespace Game.Battle
         BattleController _ctrl;
         Camera _cam;
         BattleVisuals _visuals;
-        GUIStyle _title, _body, _name, _big, _sub, _dmg, _btn, _smallBtn, _prompt, _logEntry, _logRound, _toggle;
+        GUIStyle _title, _body, _name, _big, _sub, _dmg, _btn, _smallBtn, _iconBtn, _prompt, _actorName, _logEntry, _logRound, _toggle, _barLabel;
 
         bool _showLog;
         Vector2 _logScroll;
         bool _showSettings;
         bool _showKeybinds;
         bool _confirmRestart;
+
+        // Press-and-hold on the "SM" icon -- see Update() and DrawActionMenu.
+        const float SmHoldSeconds = 0.35f;
+        Rect _smButtonRect;
+        float _smHoldStartTime = -1f;
+        bool _showSkillList;
 
         public void Init(BattleController ctrl, Camera cam, BattleVisuals visuals, bool logOpenByDefault)
         {
@@ -34,6 +42,25 @@ namespace Game.Battle
                 _showLog = !_showLog;
                 if (_showLog) _logScroll = new Vector2(0, float.MaxValue);
             }
+
+            bool choosingAction = _ctrl != null && _ctrl.Phase == ActionPhase.ChooseAction && _smButtonRect.width > 0f;
+            if (!choosingAction)
+            {
+                _showSkillList = false;
+                _smHoldStartTime = -1f;
+                return;
+            }
+
+            var mouseGui = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
+            bool overSm = _smButtonRect.Contains(mouseGui);
+
+            if (Input.GetMouseButtonDown(0) && overSm) _smHoldStartTime = Time.unscaledTime;
+            if (Input.GetMouseButtonUp(0)) _smHoldStartTime = -1f;
+            if (_smHoldStartTime >= 0f && Time.unscaledTime - _smHoldStartTime >= SmHoldSeconds)
+            {
+                _showSkillList = true;
+                _smHoldStartTime = -1f;
+            }
         }
 
         void EnsureStyles()
@@ -48,7 +75,7 @@ namespace Game.Battle
             {
                 fontSize = 14, normal = { textColor = new Color(0.94f, 0.90f, 0.83f) }, wordWrap = true,
             };
-            _name = new GUIStyle(GUI.skin.label) { fontSize = 12, normal = { textColor = Color.white } };
+            _name = new GUIStyle(GUI.skin.label) { fontSize = 11, normal = { textColor = Color.white } };
             _big = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 40, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter,
@@ -58,14 +85,21 @@ namespace Game.Battle
             _dmg = new GUIStyle(GUI.skin.label) { fontSize = 20, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             _btn = new GUIStyle(GUI.skin.button) { fontSize = 18, fontStyle = FontStyle.Bold };
             _smallBtn = new GUIStyle(GUI.skin.button) { fontSize = 12, fontStyle = FontStyle.Bold };
+            _iconBtn = new GUIStyle(GUI.skin.button) { fontSize = 13, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             _prompt = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 18, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter,
                 normal = { textColor = new Color(1f, 0.85f, 0.3f) },
             };
+            _actorName = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 13, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = new Color(1f, 0.85f, 0.3f) },
+            };
             _logEntry = new GUIStyle(GUI.skin.label) { fontSize = 13, normal = { textColor = new Color(0.9f, 0.9f, 0.9f) }, wordWrap = true };
             _logRound = new GUIStyle(GUI.skin.label) { fontSize = 12, fontStyle = FontStyle.Bold, normal = { textColor = new Color(0.91f, 0.69f, 0.35f) } };
             _toggle = new GUIStyle(GUI.skin.toggle) { fontSize = 14, normal = { textColor = new Color(0.94f, 0.90f, 0.83f) } };
+            _barLabel = new GUIStyle(GUI.skin.label) { fontSize = 9, alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.white } };
         }
 
         void OnGUI()
@@ -81,14 +115,14 @@ namespace Game.Battle
             DrawLogToggle(w);
             DrawKeybindToggle(w);
 
-            DrawRoster(_ctrl.World.PlayerUnits, new Rect(16, 90, 220, 28), false);
-            DrawRoster(_ctrl.World.EnemyUnits, new Rect(w - 236, 90, 220, 28), true);
+            DrawRoster(_ctrl.World.PlayerUnits, 16, 90, false);
+            DrawRoster(_ctrl.World.EnemyUnits, w - 176, 90, true);
 
             GUI.Box(new Rect(12, h - 56, Mathf.Min(700, w - 24), 40), GUIContent.none);
             GUI.Label(new Rect(24, h - 48, Mathf.Min(680, w - 48), 30), _ctrl.LastAction, _body);
 
             DrawDamageNumbers();
-            if (_ctrl.Phase == ActionPhase.ChooseAction) DrawActionMenu(w);
+            if (_ctrl.Phase == ActionPhase.ChooseAction) DrawActionMenu();
             if (_ctrl.Phase == ActionPhase.ChooseBench) DrawBenchMenu(w);
             if (_ctrl.Phase == ActionPhase.ChooseTarget) DrawTargetPrompt(w);
             if (_showLog) DrawLogPanel(w, h);
@@ -125,7 +159,7 @@ namespace Game.Battle
 
         void DrawKeybindPanel(int w, int h)
         {
-            var panel = new Rect(w / 2f - 160, 130, 320, 190);
+            var panel = new Rect(w / 2f - 170, 130, 340, 210);
             GUI.Box(panel, GUIContent.none);
             GUI.Label(new Rect(panel.x + 10, panel.y + 6, panel.width - 20, 22), "Keybinds", _title);
             string[] lines =
@@ -137,6 +171,7 @@ namespace Game.Battle
                 "Ctrl+Y -- redo turn",
                 "R -- restart (after battle ends)",
                 "Click -- choose a highlighted target",
+                "BA/R/S -- tap. SM -- press and hold for skill list",
             };
             float y = panel.y + 32;
             foreach (var line in lines)
@@ -176,7 +211,7 @@ namespace Game.Battle
             GUI.EndScrollView();
         }
 
-        static int CountRoundHeaders(System.Collections.Generic.IReadOnlyList<BattleLogEntry> entries)
+        static int CountRoundHeaders(IReadOnlyList<BattleLogEntry> entries)
         {
             int count = 0, lastRound = -1;
             foreach (var entry in entries)
@@ -188,33 +223,50 @@ namespace Game.Battle
             return count;
         }
 
-        void DrawRoster(System.Collections.Generic.IEnumerable<BattleUnit> units, Rect origin, bool rightAligned)
+        // Compact per-unit roster readout: name, a thin HP bar, a thinner MP bar below it.
+        const float BarWidth = 160f, HpHeight = 11f, MpHeight = 6f, NameHeight = 13f, BarGap = 2f, UnitGap = 9f;
+
+        void DrawRoster(IEnumerable<BattleUnit> units, float x, float y, bool rightAligned)
         {
-            float y = origin.y;
             foreach (var unit in units)
             {
-                DrawHpBar(new Rect(origin.x, y, origin.width, origin.height), unit, rightAligned);
-                y += origin.height + 14;
+                DrawUnitBars(x, y, unit, rightAligned);
+                y += NameHeight + HpHeight + BarGap + MpHeight + UnitGap;
             }
         }
 
-        void DrawHpBar(Rect rect, BattleUnit unit, bool rightAligned)
+        void DrawUnitBars(float x, float y, BattleUnit unit, bool rightAligned)
         {
             var nameStyle = new GUIStyle(_name) { alignment = rightAligned ? TextAnchor.UpperRight : TextAnchor.UpperLeft };
-            GUI.Label(new Rect(rect.x, rect.y - 16, rect.width, 16), unit.Definition.displayName, nameStyle);
+            GUI.Label(new Rect(x, y, BarWidth, NameHeight), unit.Definition.displayName, nameStyle);
+            y += NameHeight;
 
-            GUI.Box(rect, GUIContent.none);
-            float pct = unit.Stats.hp > 0 ? (float)unit.CurrentHp / unit.Stats.hp : 0f;
-            float fillWidth = (rect.width - 6) * pct;
-            float fillX = rightAligned ? rect.x + 3 + (rect.width - 6 - fillWidth) : rect.x + 3;
-            var fill = new Rect(fillX, rect.y + 3, fillWidth, rect.height - 6);
+            var hpRect = new Rect(x, y, BarWidth, HpHeight);
+            GUI.Box(hpRect, GUIContent.none);
+            float hpPct = unit.Stats.hp > 0 ? (float)unit.CurrentHp / unit.Stats.hp : 0f;
+            DrawBarFill(hpRect, hpPct, rightAligned,
+                !unit.IsAlive ? Color.gray : (hpPct > 0.5f ? Color.green : (hpPct > 0.2f ? Color.yellow : Color.red)));
+            GUI.Label(hpRect, $"{unit.CurrentHp}/{unit.Stats.hp}", _barLabel);
+            y += HpHeight + BarGap;
 
+            var mpRect = new Rect(x, y, BarWidth, MpHeight);
+            GUI.Box(mpRect, GUIContent.none);
+            float mpPct = unit.MaxMp > 0 ? (float)unit.CurrentMp / unit.MaxMp : 0f;
+            DrawBarFill(mpRect, mpPct, rightAligned, new Color(0.2f, 0.45f, 1f));
+        }
+
+        static void DrawBarFill(Rect rect, float pct, bool rightAligned, Color color)
+        {
+            // 1px padding per side, not 2 -- 2px-per-side left zero height for the thin
+            // MP bar (height 4-6) once the border was subtracted, which is why it always
+            // rendered empty regardless of the underlying value.
+            float fillWidth = (rect.width - 2) * Mathf.Clamp01(pct);
+            float fillX = rightAligned ? rect.x + 1 + (rect.width - 2 - fillWidth) : rect.x + 1;
+            var fill = new Rect(fillX, rect.y + 1, fillWidth, Mathf.Max(1f, rect.height - 2));
             var old = GUI.color;
-            GUI.color = !unit.IsAlive ? Color.gray : (pct > 0.5f ? Color.green : (pct > 0.2f ? Color.yellow : Color.red));
+            GUI.color = color;
             GUI.DrawTexture(fill, Texture2D.whiteTexture);
             GUI.color = old;
-
-            GUI.Label(rect, $"{unit.CurrentHp}/{unit.Stats.hp}", new GUIStyle(_name) { alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.white } });
         }
 
         void DrawModeToggle(int w)
@@ -245,45 +297,104 @@ namespace Game.Battle
             }
         }
 
-        /// <summary>Top-level action menu for a manual-mode player turn: Attack/Heal
-        /// (standardSkill), a second Attack button if the unit also has secondarySkill
-        /// (Healer archetypes), Reposition, and Sub.</summary>
-        void DrawActionMenu(int w)
+        // Small icon bar (BA/SM/R/S) anchored at the acting unit's feet, plus its name
+        // label just above the icons -- replaces the old full-width centred panel.
+        const float IconSize = 32f, IconGap = 4f;
+
+        /// <summary>Keeps a centred UI block fully on screen -- returns the left edge X
+        /// for the given desired centre X and total width, clamped so neither edge goes
+        /// past the screen margin. Units near the left/right edge of the battlefield
+        /// (e.g. Sable in the back column) would otherwise push the action menu or skill
+        /// popup partly off-screen.</summary>
+        static float ClampedLeftX(float desiredCenterX, float totalWidth, float margin = 10f)
+        {
+            float half = totalWidth / 2f;
+            float min = margin + half;
+            float max = Screen.width - margin - half;
+            float center = max < min ? Screen.width / 2f : Mathf.Clamp(desiredCenterX, min, max);
+            return center - half;
+        }
+
+        void DrawActionMenu()
         {
             var actor = _ctrl.PendingActor;
-            if (actor == null) return;
+            if (actor == null || _cam == null || _visuals == null) { _smButtonRect = default; return; }
 
-            var def = actor.Definition;
-            var options = new System.Collections.Generic.List<(string label, System.Action onClick)>();
+            // Anchored below the acting unit's actual feet -- DockPosition is the
+            // sprite's pivot, which is Center (Unity's default sprite import pivot), not
+            // Bottom, so it sits at the character's torso, not their feet. Stepping down
+            // half the sprite's world-space height (BattleLayout.TargetUnitHeight, what
+            // every sprite is normalized to -- see BattleVisuals.BuildUnitView) reaches
+            // the visual bottom edge instead. Clamped horizontally so it can't run off
+            // the edge of the screen for a back-column/edge unit.
+            var feetWorld = _visuals.DockPosition(actor) + Vector3.down * (BattleLayout.TargetUnitHeight / 2f);
+            var screen = _cam.WorldToScreenPoint(feetWorld);
+            if (screen.z < 0) { _smButtonRect = default; return; }
+            float anchorX = screen.x;
+            float anchorY = Screen.height - screen.y;
 
-            if (def.standardSkill != null)
+            float nameLeft = ClampedLeftX(anchorX, 140f);
+            GUI.Label(new Rect(nameLeft, anchorY + 2, 140, 18), actor.Definition.displayName, _actorName);
+
+            var basicAttack = _ctrl.BasicAttackSkill(actor);
+            var skillMoveOptions = _ctrl.SkillMoveOptions(actor);
+
+            var labels = new[] { "BA", "SM", "R", "S" };
+            var enabled = new[] { basicAttack != null, skillMoveOptions.Count > 0, _ctrl.CanReposition, _ctrl.CanSub };
+
+            float totalW = labels.Length * IconSize + (labels.Length - 1) * IconGap;
+            float startX = ClampedLeftX(anchorX, totalW);
+            float y = anchorY + 22f;
+
+            for (int i = 0; i < labels.Length; i++)
             {
-                string label = def.standardSkill.targetsAllies ? "Heal" : "Attack";
-                options.Add((label, () => _ctrl.ChooseSkill(def.standardSkill)));
-            }
-            if (def.secondarySkill != null)
-            {
-                string label = def.secondarySkill.targetsAllies ? "Heal" : "Attack";
-                options.Add((label, () => _ctrl.ChooseSkill(def.secondarySkill)));
-            }
-            options.Add(("Reposition", _ctrl.ChooseReposition));
-            options.Add(("Sub", _ctrl.OpenBenchMenu));
+                var rect = new Rect(startX + i * (IconSize + IconGap), y, IconSize, IconSize);
+                if (labels[i] == "SM") _smButtonRect = rect;
 
-            const float panelW = 360f, btnH = 34f;
-            float panelH = 44f + options.Count * (btnH + 8f);
-            var panel = new Rect(w / 2f - panelW / 2f, 150, panelW, panelH);
-            GUI.Box(panel, GUIContent.none);
-            GUI.Label(new Rect(panel.x + 10, panel.y + 6, panel.width - 20, 24),
-                $"{def.displayName} -- choose an action", _prompt);
-
-            float y = panel.y + 40;
-            foreach (var (label, onClick) in options)
-            {
-                GUI.enabled = label != "Reposition" || _ctrl.CanReposition;
-                if (label == "Sub") GUI.enabled = _ctrl.CanSub;
-                if (GUI.Button(new Rect(panel.x + 20, y, panel.width - 40, btnH), label, _btn)) onClick();
+                GUI.enabled = enabled[i];
+                bool clicked = GUI.Button(rect, labels[i], _iconBtn);
                 GUI.enabled = true;
-                y += btnH + 8f;
+
+                // SM's own click is ignored -- it only opens via press-and-hold, tracked
+                // in Update() against _smButtonRect (drawn here, polled next frame).
+                if (labels[i] == "SM" || !clicked) continue;
+
+                switch (labels[i])
+                {
+                    case "BA": _ctrl.ChooseSkill(basicAttack); break;
+                    case "R": _ctrl.ChooseReposition(); break;
+                    case "S": _ctrl.OpenBenchMenu(); break;
+                }
+            }
+
+            if (_showSkillList) DrawSkillListPopup(actor, skillMoveOptions, startX + totalW / 2f, y);
+        }
+
+        void DrawSkillListPopup(BattleUnit actor, IReadOnlyList<SkillDefinition> options, float anchorX, float iconsY)
+        {
+            const float panelW = 150f, btnH = 26f;
+            float panelH = options.Count * (btnH + 4f) + 8f;
+            float panelLeft = ClampedLeftX(anchorX, panelW);
+            float panelTop = Mathf.Max(4f, iconsY - panelH - 8f);
+            var panel = new Rect(panelLeft, panelTop, panelW, panelH);
+            GUI.Box(panel, GUIContent.none);
+
+            float y = panel.y + 4f;
+            foreach (var skill in options)
+            {
+                string name = skill.targetsAllies ? "Heal"
+                    : !string.IsNullOrEmpty(skill.displayName) ? skill.displayName : "Skill";
+                int mpCost = _ctrl.EffectiveMpCost(skill);
+                string label = mpCost > 0 ? $"{name} ({mpCost} MP)" : name;
+
+                GUI.enabled = actor.CurrentMp >= mpCost;
+                if (GUI.Button(new Rect(panel.x + 4, y, panelW - 8, btnH), label, _smallBtn))
+                {
+                    _ctrl.ChooseSkill(skill);
+                    _showSkillList = false;
+                }
+                GUI.enabled = true;
+                y += btnH + 4f;
             }
         }
 
@@ -403,7 +514,7 @@ namespace Game.Battle
         void DrawSettingsPanel(int w, int h)
         {
             var settings = _ctrl.Settings;
-            const float panelW = 400f, panelH = 400f;
+            const float panelW = 400f, panelH = 520f;
             var panel = new Rect(w / 2f - panelW / 2f, h / 2f - panelH / 2f, panelW, panelH);
             GUI.Box(panel, GUIContent.none);
             GUI.Label(new Rect(panel.x + 16, panel.y + 10, panel.width - 32, 26), "Settings", _title);
@@ -439,7 +550,22 @@ namespace Game.Battle
                 settings.MasterVolume = newVolume;
                 AudioListener.volume = newVolume;
             }
-            y += 36;
+            y += 34;
+
+            GUI.Label(new Rect(x, y, cw, 20), "Dev tuning -- speeds through battles, not real balance", _body);
+            y += 22;
+            GUI.Label(new Rect(x, y, cw, 20), $"Damage dealt -- {settings.DamageDealtMultiplier:0.0}x", _body);
+            y += 22;
+            settings.DamageDealtMultiplier = GUI.HorizontalSlider(new Rect(x, y, cw, 20), settings.DamageDealtMultiplier, 0.25f, 5f);
+            y += 30;
+            GUI.Label(new Rect(x, y, cw, 20), $"Damage received -- {settings.DamageReceivedMultiplier:0.0}x", _body);
+            y += 22;
+            settings.DamageReceivedMultiplier = GUI.HorizontalSlider(new Rect(x, y, cw, 20), settings.DamageReceivedMultiplier, 0f, 2f);
+            y += 30;
+            GUI.Label(new Rect(x, y, cw, 20), $"MP usage -- {settings.MpCostMultiplier:0.0}x (0x = free Skill Moves)", _body);
+            y += 22;
+            settings.MpCostMultiplier = GUI.HorizontalSlider(new Rect(x, y, cw, 20), settings.MpCostMultiplier, 0f, 2f);
+            y += 34;
 
             if (GUI.Button(new Rect(x, y, cw, 36), "Save & Back", _btn))
             {

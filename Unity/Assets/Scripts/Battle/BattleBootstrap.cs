@@ -29,7 +29,15 @@ namespace Game.Battle
             }
 
             var camGo = GameObject.Find("Main Camera") ?? new GameObject("Main Camera");
-            var cam = camGo.GetComponent<Camera>() ?? camGo.AddComponent<Camera>();
+            // Deliberately not `?? camGo.AddComponent<Camera>()` -- Unity 6's component
+            // binding can return a non-CLR-null wrapper for "no such component", which
+            // makes `??` skip AddComponent entirely and leaves `cam` pointing at nothing
+            // (confirmed via a real Editor Play-mode crash: MissingComponentException in
+            // BattleLayout.ApplyBattleCamera's `cam.orthographic = true`, with the
+            // Inspector showing Main Camera had no Camera component at all). Explicit
+            // `== null` uses Unity's overloaded equality and behaves correctly.
+            var cam = camGo.GetComponent<Camera>();
+            if (cam == null) cam = camGo.AddComponent<Camera>();
             if (camGo.GetComponent<AudioListener>() == null) camGo.AddComponent<AudioListener>();
             camGo.tag = "MainCamera";
             BattleLayout.ApplyBattleCamera(cam);

@@ -92,21 +92,67 @@ namespace Game.EditorTools
                 "player_bench_melee", "player_bench_ranged", "player_bench_support",
             };
 
-            // Healer archetypes also get a low-power attack (secondarySkill) so they're
-            // not heal-only -- reuses the Support archetype's own ±1-column pattern,
-            // just targeting the opposing faction instead of allies.
-            var secondaryAttack = BuildSecondaryAttackSkill(skillByArchetype["Support"].pattern);
+            // "SM" (Skill Move) content: mana-cost actions beyond the free "BA" attack,
+            // 3 per archetype (the full 1-3 set). Design intent per the project owner:
+            // frontline gets defensive skills, healers get support skills (this is where
+            // Heal moves to), ranged gets sniping/AoE skills -- kept to heal/damage
+            // primitives only, no status-effect system yet (explicit scope call).
+            var meleePattern = skillByArchetype["Melee"].pattern; // Pattern_MeleeBasic, ±1 column
+            var supportPattern = skillByArchetype["Support"].pattern; // Pattern_SupportBasic, ±1 column incl. self
+            var rangedPattern = skillByArchetype["Ranged"].pattern; // Pattern_RangedBasic, any column
+
+            // Melee -- defensive: patch self up, cover an adjacent ally, or finish a target harder.
+            var meleeGuard = BuildSkillMove("Skill_MeleeGuard", "Second Wind",
+                BuildSelfOnlyPattern(), power: 0.8f, usesMagic: false, targetsAllies: true, mpCost: 30);
+            var meleeRally = BuildSkillMove("Skill_MeleeRally", "Rally",
+                supportPattern, power: 0.7f, usesMagic: false, targetsAllies: true, mpCost: 25);
+            var meleePowerStrike = BuildSkillMove("Skill_MeleePowerStrike", "Power Strike",
+                meleePattern, power: 2.0f, usesMagic: false, targetsAllies: false, mpCost: 35);
+
+            // Ranged -- sniping and AoE: a heavy single shot, a 3-wide cluster hit, and a
+            // guaranteed full-team volley for the "AoE" end of that design intent.
+            var rangedVolley = BuildSkillMove("Skill_RangedVolley", "Volley",
+                BuildVolleyPattern(rangedPattern.rangeOffsets), power: 0.6f, usesMagic: false,
+                targetsAllies: false, mpCost: 25, isRanged: true);
+            var rangedSnipe = BuildSkillMove("Skill_RangedSnipe", "Snipe",
+                rangedPattern, power: 1.8f, usesMagic: false, targetsAllies: false, mpCost: 30, isRanged: true);
+            var rangedBarrage = BuildSkillMove("Skill_RangedBarrage", "Barrage",
+                BuildBarragePattern(rangedPattern.rangeOffsets), power: 0.5f, usesMagic: false,
+                targetsAllies: false, mpCost: 45, isRanged: true);
+
+            // Healer -- support: the relocated single-target Heal, a wider group heal, and
+            // a bigger single-target emergency heal.
+            var healSkill = skillByArchetype["Support"];
+            healSkill.mpCost = 20;
+            EditorUtility.SetDirty(healSkill);
+            var massHeal = BuildSkillMove("Skill_SupportMassHeal", "Mass Heal",
+                BuildWideHealPattern(), power: 0.6f, usesMagic: true, targetsAllies: true, mpCost: 35);
+            var focusHeal = BuildSkillMove("Skill_SupportFocusHeal", "Focus Heal",
+                supportPattern, power: 1.6f, usesMagic: true, targetsAllies: true, mpCost: 30);
+            // Healer's standardSkill (BA) becomes the low-power attack instead of the heal
+            // -- "healers can attack too" -- now that Heal itself lives in skillMoves.
+            var healerBasicAttack = BuildSkillMove("Skill_SupportAttackBasic", "Support Strike",
+                supportPattern, power: 0.5f, usesMagic: false, targetsAllies: false, mpCost: 0);
+
+            var skillMovesByArchetype = new Dictionary<string, List<SkillDefinition>>
+            {
+                ["Melee"] = new() { meleeGuard, meleeRally, meleePowerStrike },
+                ["Ranged"] = new() { rangedVolley, rangedSnipe, rangedBarrage },
+                ["Support"] = new() { healSkill, massHeal, focusHeal },
+            };
+            var standardSkillOverride = new Dictionary<string, SkillDefinition> { ["Support"] = healerBasicAttack };
 
             var characterDefs = new Dictionary<string, CharacterDefinition>();
             foreach (var unitId in unitIds)
             {
                 string archName = archetypes.First(a => unitId.Contains(a.Name.ToLowerInvariant())).Name;
                 var arch = archetypes.First(a => a.Name == archName);
+                var standardSkill = standardSkillOverride.TryGetValue(archName, out var ov) ? ov : skillByArchetype[archName];
                 var charDef = BuildCharacter(
                     unitId, arch, tier,
-                    skillByArchetype[archName], clipSetByArchetype[archName],
+                    standardSkill, clipSetByArchetype[archName],
                     TryGet(spritesByUnit, unitId), TryGet(portraitsByUnit, unitId),
-                    unityRelRoot, secondarySkill: archName == "Support" ? secondaryAttack : null);
+                    unityRelRoot, skillMoves: skillMovesByArchetype[archName]);
                 characterDefs[unitId] = charDef;
             }
 
@@ -253,9 +299,9 @@ namespace Game.EditorTools
 
         static CharacterDefinition BuildCharacter(
             string unitId, ArchetypeSpec arch, TierDefinition tier,
-            SkillDefinition skill, ClipSet clipSet,
+            SkillDefinition standardSkill, ClipSet clipSet,
             ManifestAsset spriteAsset, ManifestAsset portraitAsset, string unityRelRoot,
-            SkillDefinition secondarySkill = null)
+            List<SkillDefinition> skillMoves = null)
         {
             var def = LoadOrCreate<CharacterDefinition>($"{OutDir}/Characters/Char_{unitId}.asset");
             def.characterId = unitId;
@@ -264,13 +310,14 @@ namespace Game.EditorTools
             def.element = ElementType.Neutral;
             def.age = Age.Modern;
             def.baseStats = arch.BaseStats;
+            def.maxMp = 100;
             def.movePoints = 4;
             def.jump = 1;
             def.costLateral = 2;
             def.costForward = 1;
             def.costPerHeightLevel = 1;
-            def.standardSkill = skill;
-            def.secondarySkill = secondarySkill;
+            def.standardSkill = standardSkill;
+            def.skillMoves = skillMoves != null ? new List<SkillDefinition>(skillMoves) : new List<SkillDefinition>();
             def.growthPerLevel = 0.06f;
             def.clips = clipSet;
             def.portrait = LoadSprite(portraitAsset, unityRelRoot);
@@ -280,25 +327,80 @@ namespace Game.EditorTools
             return def;
         }
 
-        // Low-power attack alongside the Support archetype's heal -- "healers can attack
-        // too" per the project owner's ask. Reuses the heal's own ±1-column pattern
-        // (SkillPattern is just range/area geometry; targetsAllies is what makes a skill
-        // heal vs. attack), so no new Pattern_ asset is needed. "Low attack" falls out of
-        // the Support archetype's own low `attack` base stat (8, vs. 22 melee/18 ranged) --
-        // no separate balance knob required.
-        static SkillDefinition BuildSecondaryAttackSkill(SkillPattern supportPattern)
+        /// <summary>Range/area = self-tile only (offset 0,0) -- since exactly one unit
+        /// ever occupies a given column in this single-lane slice, a targetsAllies skill
+        /// on this pattern always resolves to "self", no special-casing needed. Used by
+        /// the frontline's defensive skill move.</summary>
+        static SkillPattern BuildSelfOnlyPattern()
         {
-            var skill = LoadOrCreate<SkillDefinition>($"{OutDir}/Skills/Skill_SupportAttackBasic.asset");
-            skill.skillId = "skill_support_attack_basic";
-            skill.displayName = "Support Strike";
+            var pattern = LoadOrCreate<SkillPattern>($"{OutDir}/Patterns/Pattern_SelfOnly.asset");
+            pattern.rangeOffsets = new List<Vector2Int> { Vector2Int.zero };
+            pattern.areaOffsets = new List<Vector2Int> { Vector2Int.zero };
+            pattern.mirrorOnFacing = true;
+            pattern.requiresLineOfSight = false;
+            EditorUtility.SetDirty(pattern);
+            return pattern;
+        }
+
+        /// <summary>Same range as the Ranged archetype's BA (any column), but a 3-wide
+        /// area centred on the chosen column -- BattleController.ResolveAction treats any
+        /// pattern with more than one areaOffset as AoE and hits every unit the area
+        /// covers via TargetResolver.GetAreaTargets. Used by ranged's AoE skill move.</summary>
+        static SkillPattern BuildVolleyPattern(List<Vector2Int> rangeOffsets)
+        {
+            var pattern = LoadOrCreate<SkillPattern>($"{OutDir}/Patterns/Pattern_RangedVolley.asset");
+            pattern.rangeOffsets = new List<Vector2Int>(rangeOffsets);
+            pattern.areaOffsets = new List<Vector2Int> { new(0, -1), new(0, 0), new(0, 1) };
+            pattern.mirrorOnFacing = true;
+            pattern.requiresLineOfSight = false;
+            EditorUtility.SetDirty(pattern);
+            return pattern;
+        }
+
+        /// <summary>Range = ±1 column incl. self (same shape as the Support archetype's
+        /// Heal), area = ±1 column around the chosen ally -- an AoE heal instead of Heal's
+        /// single target. Used by the healer's Mass Heal skill move.</summary>
+        static SkillPattern BuildWideHealPattern()
+        {
+            var pattern = LoadOrCreate<SkillPattern>($"{OutDir}/Patterns/Pattern_SupportWide.asset");
+            pattern.rangeOffsets = new List<Vector2Int> { new(0, -1), new(0, 0), new(0, 1) };
+            pattern.areaOffsets = new List<Vector2Int> { new(0, -1), new(0, 0), new(0, 1) };
+            pattern.mirrorOnFacing = true;
+            pattern.requiresLineOfSight = false;
+            EditorUtility.SetDirty(pattern);
+            return pattern;
+        }
+
+        /// <summary>Same range as the Ranged archetype's BA, but an area wide enough
+        /// (±5 columns) to guarantee covering the whole opposing formation regardless of
+        /// which column is aimed at -- this map only ever has 3 columns per side, so ±5
+        /// is "always full width" with margin to spare. Used by ranged's Barrage skill
+        /// move, the "guaranteed AoE" tier above Volley's 3-wide cluster.</summary>
+        static SkillPattern BuildBarragePattern(List<Vector2Int> rangeOffsets)
+        {
+            var pattern = LoadOrCreate<SkillPattern>($"{OutDir}/Patterns/Pattern_RangedBarrage.asset");
+            pattern.rangeOffsets = new List<Vector2Int>(rangeOffsets);
+            pattern.areaOffsets = Enumerable.Range(-5, 11).Select(c => new Vector2Int(0, c)).ToList();
+            pattern.mirrorOnFacing = true;
+            pattern.requiresLineOfSight = false;
+            EditorUtility.SetDirty(pattern);
+            return pattern;
+        }
+
+        static SkillDefinition BuildSkillMove(string assetName, string displayName, SkillPattern pattern,
+            float power, bool usesMagic, bool targetsAllies, int mpCost, bool isRanged = false)
+        {
+            var skill = LoadOrCreate<SkillDefinition>($"{OutDir}/Skills/{assetName}.asset");
+            skill.skillId = assetName.ToLowerInvariant();
+            skill.displayName = displayName;
             skill.pool = SkillPool.Standard;
-            skill.pattern = supportPattern;
-            skill.mpCost = 0;
+            skill.pattern = pattern;
+            skill.mpCost = mpCost;
             skill.cooldown = 0;
-            skill.power = 0.5f;
-            skill.usesMagic = false;
-            skill.isRanged = false;
-            skill.targetsAllies = false;
+            skill.power = power;
+            skill.usesMagic = usesMagic;
+            skill.isRanged = isRanged;
+            skill.targetsAllies = targetsAllies;
             skill.clipKey = "basicAttack";
             EditorUtility.SetDirty(skill);
             return skill;

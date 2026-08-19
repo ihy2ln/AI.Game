@@ -120,10 +120,40 @@ namespace Game.Battle
                 target, BattleLayout.StagePosition(target.Faction));
         }
 
-        /// <summary>Reverse of MoveToStage -- tweens both back to their dock positions.</summary>
+        /// <summary>Reverse of MoveToStage/MoveToMelee -- tweens both back to their dock
+        /// positions. Safe to call even when the target never left its dock (the melee
+        /// case): tweening a unit to the position it's already at is a harmless no-op.</summary>
         public IEnumerator ReturnToDock(BattleUnit actor, BattleUnit target)
         {
             yield return TweenPair(actor, DockPosition(actor), target, DockPosition(target));
+        }
+
+        const float MeleeApproachOffset = 1.8f;
+
+        /// <summary>Melee-flavoured alternative to MoveToStage: the target stays put and
+        /// the attacker closes the distance, stopping just short on their own side (left
+        /// for a player attacker, right for an enemy attacker) rather than both units
+        /// jumping to generic centre-stage marks. ReturnToDock (unchanged) handles the
+        /// return trip afterward -- the target never moved, so its half of that tween is
+        /// a no-op.</summary>
+        public IEnumerator MoveToMelee(BattleUnit attacker, BattleUnit target)
+        {
+            if (!_unitViews.TryGetValue(attacker, out var attackerGo)) yield break;
+            if (!_unitViews.TryGetValue(target, out var targetGo)) yield break;
+
+            float side = attacker.Faction == Game.Data.Faction.Player ? -1f : 1f;
+            var approachPos = targetGo.transform.position + new Vector3(side * MeleeApproachOffset, 0f, 0f);
+
+            float t = 0f;
+            var from = attackerGo.transform.position;
+            while (t < StageTweenSeconds)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / StageTweenSeconds));
+                attackerGo.transform.position = Vector3.Lerp(from, approachPos, k);
+                yield return null;
+            }
+            attackerGo.transform.position = approachPos;
         }
 
         /// <summary>Reposition action: two same-faction units have already swapped Column

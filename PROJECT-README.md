@@ -27,14 +27,24 @@ centre "stage" for each turn's action), and modern-RPG UX: pause (`Esc`), a sett
 panel (battle speed, damage-number/log/auto-mode toggles, volume), and a full multi-step
 **undo/redo** stack (`Ctrl+Z`/`Ctrl+Y`) alongside the existing full-battle restart.
 
-M9 (this session) adds **frontline succession** (a faction's formation auto-compacts
-when its frontmost unit dies — the next unit in line becomes frontline, no gaps),
-**sub-in/sub-out** (swap an active unit for one of 3 bench reserves, costs the turn),
-**reposition** (swap column with an adjacent ally, costs the turn), **healers that can
-also attack** (low power, alongside their heal), and a **2-map battle sequence** (win map
-1, the wounded party carries its HP into map 2). Manual mode now presents a per-turn
-action menu (Attack/Heal, Reposition, Sub) instead of jumping straight to target-picking.
-See "What changed" below and [[Battle-System]].
+M9 adds **frontline succession** (a faction's formation auto-compacts when its frontmost
+unit dies — the next unit in line becomes frontline, no gaps), **sub-in/sub-out** (swap
+an active unit for one of 3 bench reserves, costs the turn), **reposition** (swap column
+with an adjacent ally, costs the turn), **healers that can also attack**, and a **2-map
+battle sequence** (win map 1, the wounded party carries its HP into map 2).
+
+M10 (this session) replaces the old two-skill model with a real **Skill Move (SM)
+system**: every unit has a free "BA" (Basic Attack) plus 3 mana-cost Skill Moves,
+accessed via **press-and-hold on the compact SM icon**. The manual-mode action menu is
+now 4 small icons (**BA / SM / R / S**) anchored right under the acting character
+instead of a full-width panel, and melee-flavoured attacks now have the attacker walk up
+to the target instead of both units jumping to generic stage marks. See "What changed"
+below and [[Battle-System]]. **This session also found and fixed a real, previously
+unknown bug** (`BattleBootstrap`/`FarmBootstrap` never actually attaching a `Camera`
+component, crashing the very first `Play`) — see item 7 below; this was root-caused
+via the project owner's own interactive Editor session, the first time this project's
+battle scene had actually been played back interactively rather than only screenshotted
+via automation.
 
 ## What changed from the original design
 
@@ -102,26 +112,76 @@ See "What changed" below and [[Battle-System]].
    `BattleHistory` was extended to snapshot/restore `Column` and active/bench roster
    membership alongside HP/MP, since undo/redo now has to unwind those too. See
    "Known gaps" for a real batchmode-only asset-corruption issue hit while verifying this.
+7. **Camera bug found + fixed, Skill Move system, compact action UI, melee movement —
+   M10.** The project owner opened the Editor interactively (not automation) for the
+   first time this project has been played back that way, and hit an immediate crash:
+   `camGo.GetComponent<Camera>() ?? camGo.AddComponent<Camera>()` in both
+   `BattleBootstrap.cs` and `FarmBootstrap.cs` never actually attached a `Camera` --
+   Unity 6's component binding can return a non-CLR-null wrapper for "component not
+   found," so `??` (plain reference-null check) skipped `AddComponent` entirely.
+   `MissingComponentException` on `cam.orthographic = true` in `BattleLayout
+   .ApplyBattleCamera`. Fixed by using an explicit `== null` check (which uses Unity's
+   overloaded equality, correctly detecting the fake-null) instead of `??` in both files
+   -- this bug predates M9 and would have hit any prior session that tried Play, not
+   something introduced this session. Once fixed, the rest of this session was a real
+   back-and-forth UI/content pass driven by the project owner actually playing the game:
+   - **`CharacterDefinition.secondarySkill` (M9) replaced by `skillMoves` (List, up to
+     3)** -- `standardSkill` is now always the free "BA" for every archetype (Healers'
+     BA became their attack; Heal itself moved into `skillMoves`). `BattleController
+     .SkillMoveOptions`/`.BasicAttackSkill` read these; `EffectiveMpCost` scales
+     `skill.mpCost` by the new `Settings.MpCostMultiplier` dev slider.
+   - **9 new skills**, 3 per archetype, heal/damage primitives only (explicit scope
+     call -- no status-effect system yet): Melee gets Second Wind (self-heal)/Rally
+     (heal an ally)/Power Strike (heavy hit); Healer gets Heal/Mass Heal (AoE
+     heal)/Focus Heal (big single heal); Ranged gets Volley (3-wide AoE)/Snipe (heavy
+     single hit)/Barrage (guaranteed full-team AoE, ±5-column area). `BattleController
+     .ResolveAction`'s heal branch was generalized to support AoE the same way the
+     damage branch already did (`TargetResolver.GetAreaTargets` when
+     `pattern.areaOffsets.Count > 1`), needed for Mass Heal.
+   - **Compact action menu**: `BattleHud.DrawActionMenu` now draws 4 small icon buttons
+     (BA/SM/R/S) anchored at the acting unit's true visual feet -- `DockPosition` is the
+     sprite's *pivot*, which is Center (Unity's default import pivot) not Bottom, so the
+     anchor steps down `BattleLayout.TargetUnitHeight / 2` first. Horizontally clamped
+     (`ClampedLeftX`) so it can't run off-screen for an edge-column unit. SM's own click
+     is ignored; a separate `Update()`-driven hold-timer (`SmHoldSeconds = 0.35f`, real
+     `Time.unscaledTime` so pause/speed settings don't affect it) opens a skill-list
+     popup once the button's been held long enough, listing each Skill Move with its MP
+     cost and greying out ones the unit can't currently afford.
+   - **Melee approach movement**: `BattleVisuals.MoveToMelee` -- for any attack that
+     isn't ranged or a heal/self-buff (`BattleController.IsMeleeAction`), the attacker
+     walks to just beside the target (target stays put) instead of both units jumping to
+     the generic centre-stage marks `MoveToStage` uses for everything else.
+     `ReturnToDock` (unchanged) handles the trip back either way.
+   - **HP/MP bars**: shrunk and given a companion MP bar per unit
+     (`Definition.maxMp`, default 100, everyone starts full). Found and fixed a real
+     rendering bug along the way: `DrawBarFill`'s padding (4px) exceeded the MP bar's
+     height (4px), leaving zero pixels for the fill regardless of the underlying value --
+     looked exactly like "MP never shows/decreases" even though the data was always
+     correct. Padding is 1px/side now, bar height bumped to 6px.
+   - **Dev-tuning sliders** (Settings panel): damage dealt (0.25x-5x) / damage received
+     (0x-2x) multipliers applied in `ResolveAction`, and an MP-cost multiplier (0x-2x,
+     0x = free Skill Moves) for testing skills repeatedly without waiting on regen
+     (there isn't any yet -- MP only ever decreases once spent).
 
 ## Roster
 
-| Unit | Role | Faction | Skill pattern |
-|---|---|---|---|
-| **Kestrel** | Melee (dual katana) | Player | 1 column away only |
-| **Sable** | Ranged (sniper) | Player | any column, damage scales up with distance |
-| **Linnet** | Support (lantern-healer) | Player | heals own faction, ±1 column + self |
-| **Husk** | Melee (armored knight) | Enemy | 1 column away only |
-| **Warden** | Ranged (dark caster) | Enemy | any column |
-| **Stinger** | Support (insect monster) | Enemy | heals own faction, low-power attack (M9) |
+| Unit | Role | Faction | BA (free) | Skill Moves (mana, hold SM) |
+|---|---|---|---|---|
+| **Kestrel** | Melee | Player | Melee Basic Attack, 1 col | Second Wind (self-heal, 30MP) / Rally (heal ally, 25MP) / Power Strike (heavy hit, 35MP) |
+| **Sable** | Ranged | Player | Ranged Basic Attack, any col | Volley (3-wide AoE, 25MP) / Snipe (heavy hit, 30MP) / Barrage (full-team AoE, 45MP) |
+| **Linnet** | Support | Player | Support Strike (low power attack) | Heal (20MP) / Mass Heal (AoE heal, 35MP) / Focus Heal (big heal, 30MP) |
+| **Husk** | Melee | Enemy | same as Kestrel's archetype | same as Kestrel's archetype |
+| **Warden** | Ranged | Enemy | same as Sable's archetype | same as Sable's archetype |
+| **Stinger** | Support | Enemy | same as Linnet's archetype | same as Linnet's archetype |
 
-**Bench reserves (player, M9)** — sub in for any active player unit via the manual-mode
-Sub action, same archetype stats/skill/pattern as their active counterpart, distinct art:
+**Bench reserves (player)** — sub in for any active player unit via the manual-mode Sub
+action, same archetype stats/BA/Skill Moves as their active counterpart, distinct art:
+**Thorne** (Melee, reskin of Kestrel's archetype), **Reed** (Ranged, reskin of Sable's),
+**Vesper** (Support, reskin of Linnet's).
 
-| Unit | Role | Reskin of |
-|---|---|---|
-| **Thorne** | Melee | Kestrel's archetype |
-| **Reed** | Ranged | Sable's archetype |
-| **Vesper** | Support | Linnet's archetype, plus a low-power attack |
+Skill Move content is heal/damage primitives only (no status-effect system yet -- an
+explicit scope decision this session, see item 7 above). All 9 non-BA skills, plus the
+relocated Heal, live in `CharacterDefinition.skillMoves`; `standardSkill` is always BA.
 
 ## Milestones — all done
 
@@ -137,6 +197,7 @@ Sub action, same archetype stats/skill/pattern as their active counterpart, dist
 | M7 | Three-panel layout: docked ally/enemy rosters + centre-stage cinematic action | *(not yet tagged)* |
 | M8 | Pause, settings, multi-step undo/redo, dock-spacing bugfix | *(not yet tagged)* |
 | M9 | Frontline succession, bench sub-in/out, reposition, healer attacks, 2-map sequence | *(not yet tagged)* |
+| M10 | Camera bug fix, Skill Move system (9 skills), compact action UI, melee movement | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -149,9 +210,10 @@ precedent: commit + docs update, no snapshot/zip.
 
 `T` toggle auto/manual mode · `L` open/close the turn log · `Esc` pause ·
 `Ctrl+Z`/`Ctrl+Y` undo/redo last turn · `R` restart after the battle ends · `?` keybind
-legend. Manual mode (M9): a player unit's turn opens an action menu (Attack/Heal,
-[Attack again for Healer-archetype units], Reposition, Sub) — pick one, then click a
-highlighted target on the field (skill/reposition) or a bench unit from the list (sub).
+legend. Manual mode: a player unit's turn opens a small 4-icon menu under their feet --
+**BA** (tap, free basic attack), **SM** (press and hold ~0.35s to open the Skill Move
+list, mana-cost), **R** (tap, Reposition), **S** (tap, Sub) -- then click a highlighted
+target on the field (BA/SM/Reposition) or pick from the popup (SM's list, Sub's bench).
 
 ## How to run it
 
@@ -186,7 +248,21 @@ highlighted target on the field (skill/reposition) or a bench unit from the list
 
 ## Known gaps
 
-- **New: headless `-batchmode -executeMethod` calls that touch `AssetDatabase
+- **Resolved this session, confirmed by the project owner's own interactive Editor
+  use: manual mode's click-to-target and the action-menu buttons work fine with a real
+  mouse.** The long-standing "never interactively click-tested" gap below was always
+  specifically about *this project's automation tooling* not being able to synthesize
+  clicks against the standalone exe -- it was never evidence that clicking wouldn't work
+  for an actual person at the keyboard. The project owner played manual mode directly
+  (screenshots this session show `Kestrel's turn -- choose an action` / `Sable's turn --
+  choose an action` mid-interaction, catching and reporting three real bugs along the
+  way -- the camera crash, the action-menu position, and the MP-bar rendering bug, all
+  itemized above). **Net: prefer testing via the project owner's own interactive Editor
+  session over automation for anything UI-shaped going forward** -- it's strictly more
+  capable than anything this environment's automation can reach, and already caught
+  bugs automation never would have (the camera bug especially -- batchmode never got far
+  enough to hit it, since it fails earlier on asset loading; see the item below).
+- **Headless `-batchmode -executeMethod` calls that touch `AssetDatabase
   .SaveAssets()`/`CreateAsset` (i.e. `BattleAssetBuilder.Build()`, and therefore
   `BattleSceneBuilder.CreateBattleScene()` and `BuildBattleStandalone.Build()` which call
   it) can corrupt every touched ScriptableObject's `m_Script` reference into
@@ -215,12 +291,15 @@ highlighted target on the field (skill/reposition) or a bench unit from the list
   any further headless `-executeMethod` asset-builder runs** — this should "bless" the
   new scripts' MonoScript GUID registration the way batchmode apparently can't, after
   which headless verification should go back to being reliable like it was for M3-M8.
-  Net effect on this session: M9's C# is unit-tested (22/22 EditMode tests, including
-  new `FormationTests.cs` covering the frontline-compaction logic) and compiles clean
-  end-to-end (`BuildResult: Succeeded, 0 errors` on multiple runs), but **the actual
-  running standalone build was not successfully screenshotted this session** — treat
-  M9 as code-complete + logic-tested, not yet visually verified, until someone opens
-  the Editor normally once.
+  **Update: the project owner did exactly that later this session** -- opened the
+  Editor interactively, and M9+M10 both ran and were played there without ever hitting
+  this corruption (only the pre-existing camera bug above, unrelated). That's real
+  evidence for the "interactive-first-use blesses it" hypothesis, though still not
+  fully proven (no controlled A/B was re-run afterward). M9's C# is also unit-tested
+  (22/22 EditMode tests, including `FormationTests.cs`) and compiles clean end-to-end.
+  **Bottom line: don't use headless `-executeMethod` asset-builder runs after a script
+  change; open the Editor normally instead** -- confirmed to work, and it's what the
+  project owner will be doing anyway to playtest.
 - **This repo moved from `S:\AI\Game\AI.Game` to `S:\AI\Game\test\AI.Game`** during a
   folder cleanup (same session as M8). `S:\AI\Main Game\AI.Game` — a *different*
   project, Asset Forge's own Unity import/validation sandbox, confusingly also named
@@ -240,21 +319,14 @@ highlighted target on the field (skill/reposition) or a bench unit from the list
   https://github.com/ihy2ln/AI.Game/wiki has its first page created (one click, "Create
   the first page", any content). Then: `cd "S:\AI\Game\AI.Game.wiki" && git push -u
   origin master`.
-- **Manual mode's click-to-target, and all of M8's new buttons (pause, settings,
-  undo/redo, log toggle), are code-complete but still haven't been interactively
-  click-tested** — same root cause both times: the standalone exe isn't a "known
-  installed app," so the usual computer-use tools can't target it, and this session
-  additionally found that synthetic input (`SendKeys`, and hardware-level `SendInput`
-  with an `AttachThreadInput` focus-steal) doesn't reliably reach the game window
-  either -- `GetForegroundWindow` confirmed the click's target window never actually
-  changed away from the calling process, so clicks landed on the desktop, not the
-  game. Auto mode itself *was* verified thoroughly this way (screenshotted across many
-  real turns: hits, heals, a skip-turn on "no valid target", a unit death, HP bars and
-  the turn-log toast all updating correctly, and the M7 dock-overlap bug below was
-  *found* this way) — only mouse/keyboard-driven interaction is unverified. Needs
-  either a physical click, or a working `adb`/on-device input path, or a proper
-  fullscreen/exclusive relaunch that a background process is actually allowed to
-  foreground.
+- **Automation still can't drive the standalone exe's window directly** (see the two
+  items above for why, and why it no longer matters much: the project owner's own
+  interactive Editor session covers this better than automation ever could). Synthetic
+  input (`SendKeys`, hardware-level `SendInput` with an `AttachThreadInput` focus-steal)
+  doesn't reliably reach the game window -- `GetForegroundWindow` confirmed the click's
+  target window never actually changed, so clicks landed on the desktop, not the game.
+  Auto mode was thoroughly verified this way in earlier sessions regardless (screenshots
+  across many real turns), and the M7 dock-overlap bug was *found* this way.
 - **M7's first-pass dock spacing overlapped units** (`DockColumnSpacing` cut to 1.9 to
   make room for the new centre stage, well under the 3.6 the original single-line
   layout's own comment says is required) — Husk and Stinger visibly collided on the
@@ -270,26 +342,35 @@ highlighted target on the field (skill/reposition) or a bench unit from the list
   a placeholder. Low priority now that the roster uses curated HD art instead.
 - **M4 has no snapshot/zip** under `AI.Game Commits/battle-slice/` (see Milestones
   table) — the commit/tag/push happened, just not the extra per-section copy step.
+- **M10's 9-skill Skill Move content is code-complete but not yet confirmed running.**
+  `BattleAssetBuilder.Build()` needs to run (`AI.Game → Battle → Build Assets From
+  Manifest`, from inside the already-open interactive Editor -- see above) to actually
+  populate `CharacterDefinition.skillMoves` on every character; as of the last check
+  this session the on-disk character assets still had none of it (verified by grepping
+  `Char_player_melee.asset` for `skillMoves`/`maxMp` and finding neither key). The
+  camera bug and the action-menu/MP-bar bugs above were all found and fixed via real
+  interactive play *before* this rebuild happened, so those are confirmed; the skill
+  content itself, and the melee-approach movement, are not yet confirmed by the project
+  owner actually seeing them run.
 
 ## Natural next steps, roughly in priority order
 
-1. **Open the project in the real Unity Editor GUI once** (see the new batchmode
-   asset-corruption gap above), then use `AI.Game → Battle → Build Assets From
-   Manifest` and Play to actually see M9 (frontline succession, sub/reposition,
-   healer attacks, the map-1→map-2 transition) running for the first time —
-   code-complete and test-covered, but not yet visually confirmed.
-2. Interactively click-test manual mode and the M8/M9 buttons (pause/settings/undo/redo/
-   log/action-menu/bench-picker) from a real input device or a session with a working
-   on-window input path (see "Known gaps") -- logic is unit-tested and pre-M9 auto mode
-   was visually verified, but nothing mouse/keyboard-driven has been, and M9's own auto
-   mode hasn't been screenshotted at all yet (see gap above).
-3. Wire FMV clips into `BattleVisuals` (chroma-key shader + `VideoPlayer`, sync to
+1. **Run `AI.Game → Battle → Build Assets From Manifest`** from the already-open
+   interactive Editor (not headless), then Play and actually test the 9-skill Skill
+   Move system (hold SM, spend mana, watch Mass Heal/Barrage hit multiple targets) and
+   the melee-approach movement -- the one piece of M10 not yet confirmed running (see
+   the gap above). Frontline succession, sub/reposition, healer attacks, and the
+   map-1→map-2 transition (M9) plus the camera fix/action-menu/MP-bar fixes (M10) are
+   all confirmed working via the project owner's own interactive play this session.
+2. Wire FMV clips into `BattleVisuals` (chroma-key shader + `VideoPlayer`, sync to
    `ClipEntry.impactFrames`) — closes out the original three-layer renderer design.
-4. Get the wiki unblocked (needs the project owner's one click, or a working Claude
+3. Get the wiki unblocked (needs the project owner's one click, or a working Claude
    in Chrome connection to do it directly).
-5. On-device Android verification, whenever a session has `adb` access.
-6. Beyond the vertical slice: the roster is currently 6 fixed archetypes with 1 skill
-   each and no save/persistence. FOUNDATION.md's broader systems (tier/fusion, gacha,
-   farm/town economy, multiple skills per unit) are designed but not connected to
-   this battle system yet — that's the actual "rest of the game," this slice only
-   proves the battle screen works.
+4. On-device Android verification, whenever a session has `adb` access.
+5. Consider a real status-effect system if future Skill Moves need to go beyond
+   heal/damage (buffs, shields, taunt) — explicitly deferred this session, see item 7
+   under "What changed."
+6. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
+   reserves, no save/persistence. FOUNDATION.md's broader systems (tier/fusion, gacha,
+   farm/town economy) are designed but not connected to this battle system yet —
+   that's the actual "rest of the game," this slice only proves the battle screen works.

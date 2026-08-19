@@ -210,6 +210,22 @@ namespace Game.Battle
             _chosenAction = ChosenAction.Sub;
         }
 
+        /// <summary>The "BA" quick-attack slot -- always free, always standardSkill.</summary>
+        public SkillDefinition BasicAttackSkill(BattleUnit unit) => unit.Definition.standardSkill;
+
+        /// <summary>The "SM" (Skill Move) list -- mana-cost skills beyond BA.</summary>
+        public IReadOnlyList<SkillDefinition> SkillMoveOptions(BattleUnit unit) =>
+            unit.Definition.skillMoves.Where(s => s != null).ToList();
+
+        /// <summary>skill.mpCost scaled by the dev-tuning Settings.MpCostMultiplier --
+        /// what actually gets spent/checked against, not the raw authored cost.</summary>
+        public int EffectiveMpCost(SkillDefinition skill) => Mathf.RoundToInt(skill.mpCost * Settings.MpCostMultiplier);
+
+        /// <summary>True for a skill that should read as an up-close strike (aggressor
+        /// closes the distance to the target) rather than the generic centre-stage
+        /// cinematic beat -- any attack that isn't ranged or a heal/self-buff.</summary>
+        public bool IsMeleeAction(SkillDefinition skill) => !skill.targetsAllies && !skill.isRanged;
+
         IEnumerator RunBattle()
         {
             while (!World.IsOver)
@@ -251,45 +267,46 @@ namespace Game.Battle
             }
 
             var target = targets[UnityEngine.Random.Range(0, targets.Count)];
-            yield return _visuals.MoveToStage(unit, target);
-            ResolveAction(unit, skill, target);
+            yield return IsMeleeAction(skill) ? _visuals.MoveToMelee(unit, target) : _visuals.MoveToStage(unit, target);
+            var hitTargets = ResolveAction(unit, skill, target);
             yield return new WaitForSeconds(ImpactHoldSeconds);
             yield return _visuals.ReturnToDock(unit, target);
-            if (!target.IsAlive) yield return _visuals.ReflowFormation(World, target.Faction);
+            foreach (var faction in DeadFactionsAmong(hitTargets)) yield return _visuals.ReflowFormation(World, faction);
         }
 
-        /// <summary>Auto-mode/enemy skill choice. Healer-archetype units (secondarySkill
-        /// set) heal when an ally is missing HP, otherwise fall back to their low-power
-        /// attack if it has a target -- keeps a healer from wasting turns topping off a
-        /// full-HP ally once nobody nearby needs it.</summary>
+        /// <summary>Auto-mode/enemy skill choice. Healer-archetype units heal (their
+        /// mana-cost skillMoves entry with targetsAllies) when an ally is missing HP and
+        /// they can afford it, otherwise fall back to BA -- keeps a healer from wasting
+        /// turns topping off a full-HP ally once nobody nearby needs it. Auto mode never
+        /// reaches for the other skillMoves entries (defensive/AoE) -- those stay a
+        /// manual-only tactical choice for now, matching Reposition/Sub.</summary>
         SkillDefinition ChooseAutoSkill(BattleUnit unit, out List<BattleUnit> targets)
         {
-            var primary = unit.Definition.standardSkill;
-            var secondary = unit.Definition.secondarySkill;
-
-            if (primary == null || primary.pattern == null)
+            var basic = unit.Definition.standardSkill;
+            if (basic == null || basic.pattern == null)
             {
                 targets = new List<BattleUnit>();
                 return null;
             }
 
-            if (secondary != null && primary.targetsAllies)
+            var healMove = unit.Definition.skillMoves.FirstOrDefault(s => s != null && s.targetsAllies);
+            if (healMove != null && unit.CurrentMp >= healMove.mpCost)
             {
                 bool allyNeedsHeal = World.AllUnits.Any(u =>
                     u.Faction == unit.Faction && u.IsAlive && u.CurrentHp < u.Stats.hp);
-                if (!allyNeedsHeal)
+                if (allyNeedsHeal)
                 {
-                    var atkTargets = TargetResolver.GetValidTargets(unit, secondary, World.AllUnits);
-                    if (atkTargets.Count > 0)
+                    var healTargets = TargetResolver.GetValidTargets(unit, healMove, World.AllUnits);
+                    if (healTargets.Count > 0)
                     {
-                        targets = atkTargets;
-                        return secondary;
+                        targets = healTargets;
+                        return healMove;
                     }
                 }
             }
 
-            targets = TargetResolver.GetValidTargets(unit, primary, World.AllUnits);
-            return primary;
+            targets = TargetResolver.GetValidTargets(unit, basic, World.AllUnits);
+            return basic;
         }
 
         IEnumerator RunManualPlayerTurn(BattleUnit unit)
@@ -320,11 +337,11 @@ namespace Game.Battle
                     }
                     yield return new WaitUntil(() => _submittedTarget != null);
                     var target = _submittedTarget;
-                    yield return _visuals.MoveToStage(unit, target);
-                    ResolveAction(unit, _chosenSkill, target);
+                    yield return IsMeleeAction(_chosenSkill) ? _visuals.MoveToMelee(unit, target) : _visuals.MoveToStage(unit, target);
+                    var hitTargets = ResolveAction(unit, _chosenSkill, target);
                     yield return new WaitForSeconds(ImpactHoldSeconds);
                     yield return _visuals.ReturnToDock(unit, target);
-                    if (!target.IsAlive) yield return _visuals.ReflowFormation(World, target.Faction);
+                    foreach (var faction in DeadFactionsAmong(hitTargets)) yield return _visuals.ReflowFormation(World, faction);
                     break;
                 }
                 case ChosenAction.Reposition:
@@ -363,31 +380,60 @@ namespace Game.Battle
             LogLine($"{outgoing.Definition.displayName} subs out for {incoming.Definition.displayName}.");
         }
 
-        void ResolveAction(BattleUnit unit, SkillDefinition skill, BattleUnit target)
+        /// <summary>Resolves a skill against a chosen target tile and returns every unit
+        /// actually hit -- one for single-target skills, several for an AoE skill (a
+        /// pattern with more than one areaOffset, e.g. Volley). Deducts mpCost up front
+        /// regardless of outcome. Callers use the returned list to know which factions
+        /// might need BattleVisuals.ReflowFormation afterward.</summary>
+        List<BattleUnit> ResolveAction(BattleUnit unit, SkillDefinition skill, BattleUnit target)
         {
+            int mpSpent = EffectiveMpCost(skill);
+            if (mpSpent > 0) unit.CurrentMp = Mathf.Max(0, unit.CurrentMp - mpSpent);
+
+            bool isAoe = skill.pattern != null && skill.pattern.areaOffsets.Count > 1;
+            var hitTargets = isAoe
+                ? TargetResolver.GetAreaTargets(unit, skill, target.Column, World.AllUnits)
+                : new List<BattleUnit> { target };
+
             if (skill.targetsAllies)
             {
-                int heal = DamageCalculator.ComputeHeal(unit, skill);
-                target.ApplyHeal(heal);
-                LogLine($"{unit.Definition.displayName} heals {target.Definition.displayName} for {heal}.");
-                if (Settings.ShowDamageNumbers) SpawnDamageNumber(target, $"+{heal}", new Color(0.55f, 0.9f, 0.55f));
-            }
-            else
-            {
-                int distance = TargetResolver.ColumnDistance(unit, target);
-                int damage = DamageCalculator.ComputeDamage(unit, target, skill, distance);
-                target.ApplyDamage(damage);
-                LogLine($"{unit.Definition.displayName} hits {target.Definition.displayName} for {damage}.");
-                if (Settings.ShowDamageNumbers) SpawnDamageNumber(target, damage.ToString(), Color.white);
-                _visuals.FlashHit(target);
-                _visuals.PlayImpactFx(target);
-                if (!target.IsAlive)
+                foreach (var ally in hitTargets)
                 {
-                    _visuals.SyncDefeated(target);
-                    Formation.Compact(World.AllUnits, target.Faction);
+                    int heal = DamageCalculator.ComputeHeal(unit, skill);
+                    ally.ApplyHeal(heal);
+                    LogLine($"{unit.Definition.displayName} heals {ally.Definition.displayName} for {heal}.");
+                    if (Settings.ShowDamageNumbers) SpawnDamageNumber(ally, $"+{heal}", new Color(0.55f, 0.9f, 0.55f));
+                }
+                return hitTargets;
+            }
+
+            foreach (var hit in hitTargets)
+            {
+                int distance = TargetResolver.ColumnDistance(unit, hit);
+                int damage = DamageCalculator.ComputeDamage(unit, hit, skill, distance);
+                // Dev-convenience multipliers for speeding through battles while the game
+                // is being built -- boosts damage the player deals, softens damage the
+                // player takes. 1x on both is the real, untuned rate.
+                float mult = unit.Faction == Faction.Player
+                    ? Settings.DamageDealtMultiplier
+                    : Settings.DamageReceivedMultiplier;
+                damage = Mathf.Max(0, Mathf.RoundToInt(damage * mult));
+                hit.ApplyDamage(damage);
+                LogLine($"{unit.Definition.displayName} hits {hit.Definition.displayName} for {damage}.");
+                if (Settings.ShowDamageNumbers) SpawnDamageNumber(hit, damage.ToString(), Color.white);
+                _visuals.FlashHit(hit);
+                _visuals.PlayImpactFx(hit);
+                if (!hit.IsAlive)
+                {
+                    _visuals.SyncDefeated(hit);
+                    Formation.Compact(World.AllUnits, hit.Faction);
                 }
             }
+            return hitTargets;
         }
+
+        static IEnumerable<Faction> DeadFactionsAmong(IEnumerable<BattleUnit> hitTargets) =>
+            hitTargets.Where(t => !t.IsAlive).Select(t => t.Faction).Distinct();
 
         void SpawnDamageNumber(BattleUnit target, string text, Color color)
         {

@@ -23,7 +23,10 @@ namespace Game.Farm
             var world = new FarmWorld();
 
             var camGo = GameObject.Find("Main Camera") ?? new GameObject("Main Camera");
-            var cam = camGo.GetComponent<Camera>() ?? camGo.AddComponent<Camera>();
+            // Not `?? camGo.AddComponent<Camera>()` -- see BattleBootstrap.cs's comment
+            // on the identical line; `??` can skip AddComponent entirely here in Unity 6.
+            var cam = camGo.GetComponent<Camera>();
+            if (cam == null) cam = camGo.AddComponent<Camera>();
             if (camGo.GetComponent<AudioListener>() == null) camGo.AddComponent<AudioListener>();
             cam.tag = "MainCamera";
 
